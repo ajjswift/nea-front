@@ -1,11 +1,10 @@
 "use client";
 
 import { useEnvironment } from "@/layout/EnvironmentLayout";
-import { useState, useRef, useEffect } from "react";
+import { useRef, useEffect } from "react";
 
 export function Console() {
     const { environment, setEnvironment } = useEnvironment();
-    const [input, setInput] = useState("");
     const outputRef = useRef(null);
     const inputRef = useRef(null);
 
@@ -18,11 +17,17 @@ export function Console() {
 
     const handleSubmit = (e) => {
         e.preventDefault();
-        if (!input.trim() || !environment.ws || !environment.isRunning) return;
+
+        const input = environment.consoleInput;
+
+        if (!input?.trim() || !environment.ws || !environment.isRunning) {
+            return;
+        }
 
         setEnvironment((prev) => ({
             ...prev,
             console: (prev.console || "") + `${input}\n`,
+            consoleInput: "", // clear input after submit
         }));
 
         // Send input to the WebSocket
@@ -30,10 +35,8 @@ export function Console() {
             JSON.stringify({
                 type: "stdin",
                 data: input + "\n",
-            })
+            }),
         );
-
-        setInput("");
     };
 
     const handleConsoleChange = (e) => {
@@ -47,12 +50,13 @@ export function Console() {
         // Allow Ctrl+C to send interrupt signal
         if (e.ctrlKey && e.key === "c") {
             e.preventDefault();
+
             if (environment.ws && environment.isRunning) {
                 environment.ws.send(
                     JSON.stringify({
                         type: "killProgram",
-                        data: "", // Ctrl+C character
-                    })
+                        data: "",
+                    }),
                 );
             }
         }
@@ -93,7 +97,7 @@ export function Console() {
                 <input
                     ref={inputRef}
                     type="text"
-                    value={environment.consoleInput}
+                    value={environment.consoleInput ?? ""}
                     onChange={handleConsoleChange}
                     onKeyDown={handleKeyDown}
                     disabled={!environment.isRunning}
