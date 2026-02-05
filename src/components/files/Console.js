@@ -15,6 +15,13 @@ export function Console() {
         }
     }, [environment.console]);
 
+    useEffect(() => {
+        setEnvironment((prev) => ({
+            ...prev,
+            consoleRef: inputRef,
+        }));
+    }, []);
+
     const handleSubmit = (e) => {
         e.preventDefault();
 

@@ -30,11 +30,18 @@ export default function EnvironmentPage() {
             JSON.stringify({
                 type: "runProgram",
                 data: environment.files,
-            })
+            }),
         );
 
         setIsRunning(true);
-    };
+
+        // Focus the console input if the ref exists
+        if (environment.consoleRef && environment.consoleRef.current) {
+            setTimeout(() => {
+                environment.consoleRef.current.focus();
+            }, 50);
+        }
+    };;
 
     useEffect(() => {
         if (environment.isRunning !== undefined) {
