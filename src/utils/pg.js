@@ -1,17 +1,33 @@
 const { Pool } = require("pg");
 
-/**
- * Configuration for the Postgres Pool.
- * On macOS with Homebrew, you often don't need a password
- * if your local user matches your Postgres role.
- */
-const pool = new Pool({
-    user: "postgres",
-    host: "localhost",
-    database: "postgres",
-    password: "postgres",
-    port: 5432,
-});
+function parseInteger(value, fallback) {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+const connectionString =
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_URL ||
+    process.env.POSTGRES_URI ||
+    "";
+
+const poolConfig = connectionString
+    ? {
+          connectionString,
+      }
+    : {
+          user: process.env.PGUSER || "postgres",
+          host: process.env.PGHOST || "127.0.0.1",
+          database: process.env.PGDATABASE || "postgres",
+          password: process.env.PGPASSWORD || "postgres",
+          port: parseInteger(process.env.PGPORT, 5432),
+      };
+
+if (process.env.PGSSLMODE === "require" || process.env.POSTGRES_SSL === "true") {
+    poolConfig.ssl = { rejectUnauthorized: false };
+}
+
+const pool = new Pool(poolConfig);
 
 /**
  * Log when the pool connects to the database
