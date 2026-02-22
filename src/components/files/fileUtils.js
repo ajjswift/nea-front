@@ -18,6 +18,7 @@ export class FileLanguageService {
             this.registry.set("js", new LanguageInfo("javascript", faJs));
             this.registry.set("java", new LanguageInfo("java", faJava));
             this.registry.set("txt", new LanguageInfo("text", faFileText));
+            this.registry.set("md", new LanguageInfo("markdown", faFileText));
             this.registry.set("empty", new LanguageInfo("none", faFile));
             this.registry.set("error", new LanguageInfo("none", faWarning));
         }

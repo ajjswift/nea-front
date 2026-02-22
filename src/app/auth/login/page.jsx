@@ -1,42 +1,45 @@
 "use client";
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { LoaderCircle } from "lucide-react";
 
-export default function Signup() {
+export default function LoginPage() {
     const router = useRouter();
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
-    const [role, setRole] = useState("student");
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [errorMessage, setErrorMessage] = useState("");
 
-    const handleSignup = async (event) => {
+    const handleLogin = async (event) => {
         event.preventDefault();
         setIsSubmitting(true);
         setErrorMessage("");
 
         try {
-            const response = await fetch("/api/auth/signup", {
+            const response = await fetch("/api/auth/login", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     username,
                     password,
-                    role,
                 }),
             });
 
             const payload = await response.json();
             if (!response.ok) {
-                throw new Error(payload?.error || "Signup failed.");
+                throw new Error(payload?.message || payload?.error || "Login failed.");
             }
 
-            router.push("/auth/login");
+            if (payload?.role === "teacher") {
+                router.push("/classroom");
+            } else {
+                router.push("/");
+            }
         } catch (error) {
-            setErrorMessage(error.message || "Signup failed.");
+            setErrorMessage(error.message || "Error occurred");
         } finally {
             setIsSubmitting(false);
         }
@@ -46,32 +49,23 @@ export default function Signup() {
         <div className="min-h-screen bg-zinc-950 text-zinc-100">
             <main className="mx-auto w-full max-w-md px-4 py-10">
                 <section className="rounded-lg border border-zinc-800 bg-zinc-900 p-5">
-                    <h1 className="text-xl font-semibold">Create account</h1>
+                    <h1 className="text-xl font-semibold">Log in</h1>
                     <p className="mt-1 text-sm text-zinc-400">
-                        Register as a student or teacher.
+                        Continue to your environment dashboard.
                     </p>
 
-                    <form className="mt-5 space-y-3" onSubmit={handleSignup}>
+                    <form className="mt-5 space-y-3" onSubmit={handleLogin}>
                         <Input
                             placeholder="Username"
                             value={username}
                             onChange={(event) => setUsername(event.target.value)}
                         />
                         <Input
+                            placeholder="Password"
                             type="password"
-                            placeholder="Password (8+ characters)"
                             value={password}
                             onChange={(event) => setPassword(event.target.value)}
                         />
-                        <select
-                            value={role}
-                            onChange={(event) => setRole(event.target.value)}
-                            className="h-9 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100"
-                        >
-                            <option value="student">Student account</option>
-                            <option value="teacher">Teacher account</option>
-                        </select>
-
                         <Button
                             type="submit"
                             disabled={isSubmitting}
@@ -80,10 +74,10 @@ export default function Signup() {
                             {isSubmitting ? (
                                 <>
                                     <LoaderCircle className="size-4 animate-spin" />
-                                    Creating...
+                                    Logging in...
                                 </>
                             ) : (
-                                "Create account"
+                                "Log in"
                             )}
                         </Button>
                     </form>

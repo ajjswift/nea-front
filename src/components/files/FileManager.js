@@ -20,64 +20,169 @@ import {
     ContextMenuItem,
     ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { faPenToSquare } from "@fortawesome/free-regular-svg-icons";
 
+function isInstructionsFile(fileName) {
+    return (fileName || "").toLowerCase() === "instructions.md";
+}
+
+function getDisplayFileName(fileName, hideMarkdownSuffix = false) {
+    if (!hideMarkdownSuffix) {
+        return fileName;
+    }
+
+    return (fileName || "").replace(/\.md$/i, "");
+}
+
 export function FileManager() {
     const { environment, setEnvironment } = useEnvironment();
     const [newFileOpen, setNewFileOpen] = useState(false);
+    const isReadOnlyInstructions = Boolean(
+        environment?.permissions?.readOnlyInstructions,
+    );
+    const isAssignmentEnvironment = Boolean(
+        environment?.access?.isAssignmentEnvironment,
+    );
 
     const changeCurrentFile = (id) => {
         setEnvironment((prev) => ({ ...prev, currentFile: id }));
     };
 
     const createFile = (fileName) => {
+        const normalizedFileName = (fileName || "").trim();
+
+        if (!normalizedFileName || !isValidFileName(normalizedFileName)) {
+            return;
+        }
+
         const newId = crypto.randomUUID();
-        setEnvironment((prev) => ({
-            ...prev,
-            files: [
-                ...environment.files,
+        setEnvironment((prev) => {
+            const previousFiles = Array.isArray(prev.files) ? prev.files : [];
+            const updatedFiles = [
+                ...previousFiles,
                 {
                     id: newId,
-                    name: fileName,
+                    name: normalizedFileName,
                     content: "",
                 },
-            ],
-        }));
+            ];
 
-        changeCurrentFile(newId);
+            if (prev.ws?.readyState === 1) {
+                prev.ws.send(
+                    JSON.stringify({
+                        type: "fileUpdate",
+                        data: {
+                            fileId: newId,
+                            changes: [],
+                            files: updatedFiles,
+                            userId: prev.userId,
+                        },
+                    }),
+                );
+            }
+
+            return {
+                ...prev,
+                files: updatedFiles,
+                currentFile: newId,
+            };
+        });
+
         setNewFileOpen(false);
     };
 
     const deleteFile = (fileId) => {
-        if (environment.currentFile === fileId) {
-            setEnvironment((prev) => ({ ...prev, currentFile: null }));
-        }
-        setEnvironment((prev) => ({
-            ...prev,
-            files: prev.files.filter((f) => f.id !== fileId),
-        }));
+        setEnvironment((prev) => {
+            const previousFiles = Array.isArray(prev.files) ? prev.files : [];
+            const targetFile = previousFiles.find((file) => file.id === fileId);
+            if (
+                prev?.permissions?.readOnlyInstructions &&
+                isInstructionsFile(targetFile?.name)
+            ) {
+                return prev;
+            }
+
+            const updatedFiles = previousFiles.filter((f) => f.id !== fileId);
+
+            if (prev.ws?.readyState === 1) {
+                prev.ws.send(
+                    JSON.stringify({
+                        type: "fileUpdate",
+                        data: {
+                            fileId,
+                            changes: [],
+                            files: updatedFiles,
+                            userId: prev.userId,
+                        },
+                    }),
+                );
+            }
+
+            const nextCurrentFile =
+                prev.currentFile === fileId
+                    ? updatedFiles[0]?.id || null
+                    : prev.currentFile;
+
+            return {
+                ...prev,
+                files: updatedFiles,
+                currentFile: nextCurrentFile,
+            };
+        });
     };
 
     const renameFile = (fileId, newName) => {
-        const newfiles = environment.files.map((f) =>
-            f.id === fileId ? { ...f, name: newName } : f
-        );
-        setEnvironment((prev) => ({
-            ...prev,
-            files: newfiles,
-        }));
-        environment.ws.send(
-            JSON.stringify({
-                type: "fileUpdate",
-                data: newfiles,
-            })
-        );
+        const normalizedNewName = (newName || "").trim();
+
+        if (!normalizedNewName || !isValidFileName(normalizedNewName)) {
+            return;
+        }
+
+        setEnvironment((prev) => {
+            const previousFiles = Array.isArray(prev.files) ? prev.files : [];
+            const targetFile = previousFiles.find((file) => file.id === fileId);
+            if (
+                prev?.permissions?.readOnlyInstructions &&
+                isInstructionsFile(targetFile?.name)
+            ) {
+                return prev;
+            }
+
+            const updatedFiles = previousFiles.map((f) =>
+                f.id === fileId ? { ...f, name: normalizedNewName } : f,
+            );
+
+            if (prev.ws?.readyState === 1) {
+                prev.ws.send(
+                    JSON.stringify({
+                        type: "fileUpdate",
+                        data: {
+                            fileId,
+                            changes: [],
+                            files: updatedFiles,
+                            userId: prev.userId,
+                        },
+                    }),
+                );
+            }
+
+            return {
+                ...prev,
+                files: updatedFiles,
+            };
+        });
     };
 
     const currentFile = environment.currentFile;
+    const files = Array.isArray(environment?.files) ? environment.files : [];
+    const pinnedInstructionsFile = isAssignmentEnvironment
+        ? files.find((file) => isInstructionsFile(file?.name))
+        : null;
+    const listedFiles = pinnedInstructionsFile
+        ? files.filter((file) => file.id !== pinnedInstructionsFile.id)
+        : files;
 
     return (
         <div className="flex flex-col gap-2 font-light">
@@ -87,9 +192,50 @@ export function FileManager() {
                 createFile={createFile}
             />
 
+            {pinnedInstructionsFile ? (
+                <ContextMenu key={pinnedInstructionsFile.id}>
+                    <ContextMenuTrigger>
+                        <div
+                            style={{ cursor: "pointer" }}
+                            onClick={() => changeCurrentFile(pinnedInstructionsFile.id)}
+                            className={`flex gap-3 items-center ${
+                                currentFile === pinnedInstructionsFile.id
+                                    ? "font-bold"
+                                    : ""
+                            }`}
+                        >
+                            <FontAwesomeIcon
+                                icon={getFileIcon(pinnedInstructionsFile.name)}
+                                className="scale-110"
+                            />
+                            {getDisplayFileName(pinnedInstructionsFile.name, true)}
+                        </div>
+                    </ContextMenuTrigger>
+                    <ContextMenuContent>
+                        {isReadOnlyInstructions &&
+                        isInstructionsFile(pinnedInstructionsFile.name) ? (
+                            <ContextMenuItem disabled>
+                                Locked in assignment
+                            </ContextMenuItem>
+                        ) : (
+                            <>
+                                <RenameContextWindow
+                                    renameFile={renameFile}
+                                    file={pinnedInstructionsFile}
+                                />
+                                <DeleteContextWindow
+                                    deleteFile={deleteFile}
+                                    file={pinnedInstructionsFile}
+                                />
+                            </>
+                        )}
+                    </ContextMenuContent>
+                </ContextMenu>
+            ) : null}
+
             <div className="w-full my-3 h-[1px] bg-zinc-700"></div>
 
-            {environment?.files?.map((file) => (
+            {listedFiles.map((file) => (
                 <ContextMenu key={file.id}>
                     <ContextMenuTrigger>
                         <div
@@ -103,20 +249,32 @@ export function FileManager() {
                                 icon={getFileIcon(file.name)}
                                 className="scale-110"
                             />
-                            {file.name}
+                            {getDisplayFileName(
+                                file.name,
+                                isAssignmentEnvironment && isInstructionsFile(file.name),
+                            )}
                         </div>
                     </ContextMenuTrigger>
                     <ContextMenuContent>
-                        {/* Note: We removed the wrapping ContextMenuItem here. 
-                The DeleteContextWindow now renders it. */}
-                        <RenameContextWindow
-                            renameFile={renameFile}
-                            file={file}
-                        />
-                        <DeleteContextWindow
-                            deleteFile={deleteFile}
-                            file={file}
-                        />
+                        {isReadOnlyInstructions &&
+                        isInstructionsFile(file.name) ? (
+                            <ContextMenuItem disabled>
+                                Locked in assignment
+                            </ContextMenuItem>
+                        ) : (
+                            <>
+                                {/* Note: We removed the wrapping ContextMenuItem here.
+                                The DeleteContextWindow now renders it. */}
+                                <RenameContextWindow
+                                    renameFile={renameFile}
+                                    file={file}
+                                />
+                                <DeleteContextWindow
+                                    deleteFile={deleteFile}
+                                    file={file}
+                                />
+                            </>
+                        )}
                     </ContextMenuContent>
                 </ContextMenu>
             ))}
@@ -126,10 +284,14 @@ export function FileManager() {
 
 function NewFileDialog({ newFileOpen, setNewFileOpen, createFile }) {
     const [fileName, setFileName] = useState("");
-    const [isDisabled, setDisabled] = useState(false);
-    const [isInvalid, setInvalid] = useState(false);
 
     const isValid = isValidFileName(fileName);
+
+    useEffect(() => {
+        if (!newFileOpen) {
+            setFileName("");
+        }
+    }, [newFileOpen]);
 
     return (
         <Dialog open={newFileOpen} onOpenChange={setNewFileOpen}>
@@ -159,10 +321,6 @@ function NewFileDialog({ newFileOpen, setNewFileOpen, createFile }) {
                     <div
                         className={cn(
                             "flex items-center gap-2 h-9 rounded-md border bg-transparent px-2.5 py-1 text-sm font-normal shadow-xs transition-[color,box-shadow] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50 dark:bg-input/30 border-input w-full",
-                            isInvalid &&
-                                "aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:aria-invalid:border-destructive/50",
-                            isDisabled &&
-                                "opacity-50 pointer-events-none cursor-not-allowed"
                         )}
                     >
                         <FontAwesomeIcon
@@ -173,8 +331,6 @@ function NewFileDialog({ newFileOpen, setNewFileOpen, createFile }) {
                             id="fileNameInput"
                             value={fileName}
                             onChange={(e) => setFileName(e.target.value)}
-                            disabled={isDisabled}
-                            aria-invalid={isInvalid}
                             placeholder="example.txt"
                             className="bg-transparent outline-none w-full text-sm placeholder:text-muted-foreground"
                         />
@@ -253,8 +409,6 @@ function RenameContextWindow({ file, renameFile }) {
     const [isConfirmOpen, setIsConfirmOpen] = useState(false);
 
     const [renamedFileName, setRenamedFileName] = useState("");
-    const [isDisabled, setDisabled] = useState(false);
-    const [isInvalid, setInvalid] = useState(false);
 
     const isValid = isValidFileName(renamedFileName);
 
@@ -301,10 +455,6 @@ function RenameContextWindow({ file, renameFile }) {
                     <div
                         className={cn(
                             "flex items-center gap-2 h-9 rounded-md border bg-transparent px-2.5 py-1 text-sm font-normal shadow-xs transition-[color,box-shadow] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50 dark:bg-input/30 border-input w-full",
-                            isInvalid &&
-                                "aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:aria-invalid:border-destructive/50",
-                            isDisabled &&
-                                "opacity-50 pointer-events-none cursor-not-allowed"
                         )}
                     >
                         <FontAwesomeIcon
@@ -315,8 +465,6 @@ function RenameContextWindow({ file, renameFile }) {
                             id="fileNameInput"
                             value={renamedFileName}
                             onChange={updateFileName}
-                            disabled={isDisabled}
-                            aria-invalid={isInvalid}
                             placeholder="example.txt"
                             className="bg-transparent outline-none w-full text-sm placeholder:text-muted-foreground"
                         />

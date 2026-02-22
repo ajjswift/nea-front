@@ -7,12 +7,25 @@ import axios from "axios";
 
 export function EnvironmentManager() {
     const params = useParams();
-    const environmentId = params.environmentId;
+    const environmentId = Array.isArray(params.environmentId)
+        ? params.environmentId[0]
+        : params.environmentId;
     const { environment, setEnvironment } = useEnvironment();
+    const [clientId] = useState(() => {
+        if (
+            typeof window !== "undefined" &&
+            typeof window.crypto?.randomUUID === "function"
+        ) {
+            return window.crypto.randomUUID();
+        }
+
+        return `${Date.now()}-${Math.random()}`;
+    });
 
     const wsRef = useRef(null);
     const reconnectTimeoutRef = useRef(null);
-    const [reconnectAttempts, setReconnectAttempts] = useState(0);
+    const reconnectAttemptsRef = useRef(0);
+    const manualDisconnectRef = useRef(false);
     const [wsUri, setWsUri] = useState(null);
 
     // Fetch WebSocket URL **once** on page load
@@ -40,8 +53,7 @@ export function EnvironmentManager() {
     const connectWebSocket = useCallback(() => {
         if (!environmentId || !wsUri) return;
 
-        const clientId = crypto.randomUUID();
-
+        manualDisconnectRef.current = false;
         const ws = new WebSocket(
             `${wsUri}?env=${environmentId}&client=${clientId}`,
         );
@@ -49,19 +61,27 @@ export function EnvironmentManager() {
 
         ws.onopen = () => {
             console.log("WebSocket connected");
-            setReconnectAttempts(0);
+            reconnectAttemptsRef.current = 0;
             setEnvironment((prev) => ({ ...prev, ws }));
         };
 
         ws.onmessage = (event) => {
-            const parsedData = JSON.parse(event.data);
-            console.log(parsedData);
+            let parsedData;
+            try {
+                parsedData = JSON.parse(event.data);
+            } catch (error) {
+                console.error("Invalid websocket message payload:", error);
+                return;
+            }
 
             switch (parsedData.type) {
                 case "welcome":
                     setEnvironment((prev) => ({
                         ...prev,
-                        files: [...parsedData.data.files],
+                        id: environmentId,
+                        files: Array.isArray(parsedData?.data?.files)
+                            ? [...parsedData.data.files]
+                            : [],
                         clientId: clientId,
                         userId: parsedData.data.userId || clientId,
                     }));
@@ -101,11 +121,15 @@ export function EnvironmentManager() {
                             (prev.console || "") +
                             `\n[Session stopped: ${parsedData.data.reason}]\n`,
                         isRunning: false,
+                        lastStopped: parsedData.data.time,
                     }));
                     break;
 
                 case "fileUpdate":
                     const fileUpdate = parsedData.data;
+                    if (!Array.isArray(fileUpdate?.files)) {
+                        break;
+                    }
 
                     setEnvironment((prev) => ({
                         ...prev,
@@ -115,16 +139,18 @@ export function EnvironmentManager() {
                     break;
 
                 case "runProcessingStarted":
-                    if (
-                        parsedData.data.time > (environment?.lastStopped || 0)
-                    ) {
-                        setEnvironment((prev) => ({
+                    setEnvironment((prev) => {
+                        if (parsedData.data.time <= (prev.lastStopped || 0)) {
+                            return prev;
+                        }
+
+                        console.log("Set running to true, cleared terminal");
+                        return {
                             ...prev,
                             isRunning: true,
                             console: "",
-                        }));
-                        console.log("Set running to true, cleared terminal");
-                    }
+                        };
+                    });
 
                     break;
 
@@ -138,13 +164,6 @@ export function EnvironmentManager() {
                     }));
                     break;
                 }
-
-                case "stopped":
-                    setEnvironment((prev) => ({
-                        ...prev,
-                        lastStopped: parsedData.data.time,
-                    }));
-                    break;
 
                 case "cursorUpdate": {
                     const rawCursor = parsedData.data;
@@ -202,21 +221,21 @@ export function EnvironmentManager() {
             setEnvironment((prev) => ({ ...prev, ws: null }));
             wsRef.current = null;
 
-            // Auto-reconnect only if not a clean close
-            if (!event.wasClean) {
+            // Auto-reconnect only if this wasn't an intentional close.
+            if (!manualDisconnectRef.current && !event.wasClean) {
                 const retryDelay = Math.min(
-                    1000 * Math.pow(2, reconnectAttempts),
+                    1000 * Math.pow(2, reconnectAttemptsRef.current),
                     10000,
                 );
                 console.log(`Reconnecting in ${retryDelay / 1000}s...`);
 
                 reconnectTimeoutRef.current = setTimeout(() => {
-                    setReconnectAttempts((x) => x + 1);
+                    reconnectAttemptsRef.current += 1;
                     connectWebSocket();
                 }, retryDelay);
             }
         };
-    }, [environmentId, wsUri, setEnvironment, reconnectAttempts]);
+    }, [environmentId, wsUri, setEnvironment, clientId]);
 
     // Connect and handle cleanup
     useEffect(() => {
@@ -225,6 +244,7 @@ export function EnvironmentManager() {
         connectWebSocket();
 
         return () => {
+            manualDisconnectRef.current = true;
             if (reconnectTimeoutRef.current)
                 clearTimeout(reconnectTimeoutRef.current);
             if (wsRef.current) wsRef.current.close();
@@ -233,13 +253,17 @@ export function EnvironmentManager() {
     }, [environmentId, wsUri, connectWebSocket]);
 
     useEffect(() => {
-        if (!environment.currentFile && environment?.files?.length > 0) {
-            setEnvironment((prev) => ({
+        setEnvironment((prev) => {
+            if (prev.currentFile || !Array.isArray(prev.files) || prev.files.length === 0) {
+                return prev;
+            }
+
+            return {
                 ...prev,
-                currentFile: environment.files[0].id,
-            }));
-        }
-    }, [environment, setEnvironment]);
+                currentFile: prev.files[0].id,
+            };
+        });
+    }, [environment?.files, environment?.currentFile, setEnvironment]);
 
     return null;
 }

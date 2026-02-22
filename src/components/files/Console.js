@@ -20,7 +20,7 @@ export function Console() {
             ...prev,
             consoleRef: inputRef,
         }));
-    }, []);
+    }, [setEnvironment]);
 
     const handleSubmit = (e) => {
         e.preventDefault();
@@ -61,7 +61,7 @@ export function Console() {
             if (environment.ws && environment.isRunning) {
                 environment.ws.send(
                     JSON.stringify({
-                        type: "killProgram",
+                        type: "stop",
                         data: "",
                     }),
                 );
