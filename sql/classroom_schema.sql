@@ -79,6 +79,10 @@ CREATE TABLE IF NOT EXISTS assignments (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+ALTER TABLE assignments
+    ADD COLUMN IF NOT EXISTS test_cases_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    ADD COLUMN IF NOT EXISTS checklist_json JSONB NOT NULL DEFAULT '{}'::jsonb;
+
 CREATE INDEX IF NOT EXISTS idx_assignments_class_id
     ON assignments (class_id);
 
@@ -87,6 +91,29 @@ CREATE INDEX IF NOT EXISTS idx_assignments_teacher_id
 
 CREATE INDEX IF NOT EXISTS idx_assignments_template_environment_id
     ON assignments (template_environment_id);
+
+CREATE TABLE IF NOT EXISTS help_requests (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    class_id TEXT NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+    assignment_id TEXT REFERENCES assignments(id) ON DELETE SET NULL,
+    student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    environment_id TEXT NOT NULL,
+    message VARCHAR(1000),
+    status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'resolved')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    resolved_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_help_requests_class_status_created
+    ON help_requests (class_id, status, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_help_requests_student_status
+    ON help_requests (student_id, status);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_help_requests_open_student_environment
+    ON help_requests (student_id, environment_id)
+    WHERE status = 'open';
 
 CREATE TABLE IF NOT EXISTS assignment_environments (
     id TEXT PRIMARY KEY,

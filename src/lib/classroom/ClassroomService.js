@@ -133,6 +133,124 @@ export class ClassroomService {
         return normalized;
     }
 
+    normalizeStringArray(value, { maxItems = 50, maxLength = 120 } = {}) {
+        if (!Array.isArray(value)) {
+            return [];
+        }
+
+        const normalized = [];
+        for (const entry of value) {
+            const nextValue =
+                typeof entry === "string" ? entry.trim() : "";
+            if (!nextValue) {
+                continue;
+            }
+
+            normalized.push(nextValue.slice(0, maxLength));
+            if (normalized.length >= maxItems) {
+                break;
+            }
+        }
+
+        return [...new Set(normalized)];
+    }
+
+    normalizeChecklist(payload = {}) {
+        const rawChecklist = payload?.checklist || {};
+        const requiredFiles = this.normalizeStringArray(
+            rawChecklist?.requiredFiles,
+            { maxItems: 20, maxLength: 80 },
+        );
+
+        return {
+            requiredFiles,
+        };
+    }
+
+    normalizeTestCases(payload = {}) {
+        const provided = payload?.testCases;
+        if (!Array.isArray(provided)) {
+            return [];
+        }
+
+        const normalized = [];
+        for (let index = 0; index < provided.length; index += 1) {
+            const entry = provided[index] || {};
+            const name = this.normalizeOptionalText(
+                entry?.name,
+                120,
+            ) || `Test ${index + 1}`;
+            const input = this.normalizeOptionalText(entry?.input, 4000) || "";
+            const expectedOutput = this.normalizeOptionalText(
+                entry?.expectedOutput,
+                8000,
+            ) || "";
+
+            normalized.push({
+                id: randomUUID(),
+                name,
+                input,
+                expectedOutput,
+            });
+
+            if (normalized.length >= 25) {
+                break;
+            }
+        }
+
+        return normalized;
+    }
+
+    parseJsonArray(value, fallback = []) {
+        if (Array.isArray(value)) {
+            return value;
+        }
+
+        if (typeof value === "string") {
+            try {
+                const parsed = JSON.parse(value);
+                return Array.isArray(parsed) ? parsed : fallback;
+            } catch {
+                return fallback;
+            }
+        }
+
+        return fallback;
+    }
+
+    parseJsonObject(value, fallback = {}) {
+        if (value && typeof value === "object" && !Array.isArray(value)) {
+            return value;
+        }
+
+        if (typeof value === "string") {
+            try {
+                const parsed = JSON.parse(value);
+                if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+                    return parsed;
+                }
+                return fallback;
+            } catch {
+                return fallback;
+            }
+        }
+
+        return fallback;
+    }
+
+    normalizeHelpMessage(value) {
+        if (typeof value !== "string") {
+            return null;
+        }
+
+        const normalized = value.trim();
+        if (!normalized) {
+            return null;
+        }
+
+        return normalized.slice(0, 1000);
+    }
+
     getTemplateCloneEndpoint() {
         const wsUrl = process.env.WEBSOCKET_URL;
         if (!wsUrl) {
@@ -219,6 +337,8 @@ export class ClassroomService {
                     dueAt: row.due_at,
                     templateEnvironmentId: row.template_environment_id,
                     templateEnvironmentName: row.template_environment_name,
+                    testCases: this.parseJsonArray(row.test_cases_json, []),
+                    checklist: this.parseJsonObject(row.checklist_json, {}),
                     createdAt: row.created_at,
                     updatedAt: row.updated_at,
                     environments: [],
@@ -362,6 +482,8 @@ export class ClassroomService {
         const title = this.normalizeName(payload.title, "Assignment title", 160);
         const description = this.normalizeOptionalText(payload.description, 2000);
         const dueAt = this.parseDueAt(payload.dueAt);
+        const testCases = this.normalizeTestCases(payload);
+        const checklist = this.normalizeChecklist(payload);
         const templateEnvironmentId = this.normalizeTemplateEnvironmentId(
             payload.templateEnvironmentId,
         );
@@ -417,6 +539,8 @@ export class ClassroomService {
                     dueAt,
                     templateEnvironmentId:
                         templateEnvironment?.id || null,
+                    testCasesJson: testCases,
+                    checklistJson: checklist,
                 },
                 client,
             );
@@ -491,6 +615,8 @@ export class ClassroomService {
         const title = this.normalizeName(payload.title, "Assignment title", 160);
         const description = this.normalizeOptionalText(payload.description, 2000);
         const dueAt = this.parseDueAt(payload.dueAt);
+        const testCases = this.normalizeTestCases(payload);
+        const checklist = this.normalizeChecklist(payload);
 
         const assignment = await this.classroomRepository.updateAssignment({
             assignmentId,
@@ -498,6 +624,8 @@ export class ClassroomService {
             title,
             description,
             dueAt,
+            testCasesJson: testCases,
+            checklistJson: checklist,
         });
 
         if (!assignment) {
@@ -677,6 +805,131 @@ export class ClassroomService {
         }
 
         return hydratedClasses;
+    }
+
+    mapHelpRequest(row) {
+        if (!row) {
+            return null;
+        }
+
+        return {
+            id: row.id,
+            classId: row.class_id,
+            className: row.class_name || "Class",
+            assignmentId: row.assignment_id || null,
+            assignmentTitle: row.assignment_title || null,
+            studentId: row.student_id,
+            studentUsername: row.student_username || "Student",
+            environmentId: row.environment_id,
+            message: row.message || null,
+            status: row.status,
+            createdAt: row.created_at,
+            updatedAt: row.updated_at,
+            resolvedAt: row.resolved_at,
+        };
+    }
+
+    async listTeacherHelpQueue(user, classId = null) {
+        this.ensureTeacher(user);
+
+        const normalizedClassId =
+            typeof classId === "string" && classId.trim() ? classId.trim() : null;
+        const rows = await this.classroomRepository.listOpenHelpRequestsForTeacher(
+            user.userId,
+            normalizedClassId,
+        );
+
+        return rows.map((row) => this.mapHelpRequest(row)).filter(Boolean);
+    }
+
+    async requestStudentHelp(user, payload = {}) {
+        this.ensureStudent(user);
+
+        const environmentId =
+            typeof payload?.environmentId === "string"
+                ? payload.environmentId.trim()
+                : "";
+        if (!environmentId) {
+            throw new ClassroomValidationError("Environment ID is required.");
+        }
+
+        const environmentContext =
+            await this.classroomRepository.findStudentAssignmentEnvironment(
+                user.userId,
+                environmentId,
+            );
+        if (!environmentContext) {
+            throw new ClassroomAuthorizationError(
+                "Help requests are only available in your assignment environments.",
+            );
+        }
+
+        const message = this.normalizeHelpMessage(payload?.message);
+
+        const existingOpenRequest =
+            await this.classroomRepository.findOpenHelpRequestForStudentEnvironment(
+                user.userId,
+                environmentId,
+            );
+
+        if (existingOpenRequest) {
+            const updated = await this.classroomRepository.updateHelpRequestMessage(
+                existingOpenRequest.id,
+                message,
+            );
+            const enriched = {
+                ...updated,
+                class_name: environmentContext.class_name,
+                assignment_title: environmentContext.assignment_title,
+                student_username: user.username,
+            };
+            return {
+                request: this.mapHelpRequest(enriched),
+                alreadyOpen: true,
+            };
+        }
+
+        const created = await this.classroomRepository.createHelpRequest({
+            id: randomUUID(),
+            classId: environmentContext.class_id,
+            assignmentId: environmentContext.assignment_id,
+            studentId: user.userId,
+            environmentId,
+            message,
+            status: "open",
+        });
+
+        const enriched = {
+            ...created,
+            class_name: environmentContext.class_name,
+            assignment_title: environmentContext.assignment_title,
+            student_username: user.username,
+        };
+
+        return {
+            request: this.mapHelpRequest(enriched),
+            alreadyOpen: false,
+        };
+    }
+
+    async resolveHelpRequest(user, helpRequestId) {
+        this.ensureTeacher(user);
+
+        const normalizedId =
+            typeof helpRequestId === "string" ? helpRequestId.trim() : "";
+        if (!normalizedId) {
+            throw new ClassroomValidationError("Help request ID is required.");
+        }
+
+        const resolved = await this.classroomRepository.resolveHelpRequestForTeacher(
+            normalizedId,
+            user.userId,
+        );
+        if (!resolved) {
+            throw new ClassroomNotFoundError("Help request not found.");
+        }
+
+        return this.mapHelpRequest(resolved);
     }
 
     async canTeacherAccessEnvironment(user, environmentId) {

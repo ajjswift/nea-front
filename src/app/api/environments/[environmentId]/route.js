@@ -116,6 +116,42 @@ function getAnonymousViewerFromRequest(request) {
     };
 }
 
+function normalizeJsonArray(value) {
+    if (Array.isArray(value)) {
+        return value;
+    }
+
+    if (typeof value === "string") {
+        try {
+            const parsed = JSON.parse(value);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch {
+            return [];
+        }
+    }
+
+    return [];
+}
+
+function normalizeJsonObject(value) {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+        return value;
+    }
+
+    if (typeof value === "string") {
+        try {
+            const parsed = JSON.parse(value);
+            return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+                ? parsed
+                : {};
+        } catch {
+            return {};
+        }
+    }
+
+    return {};
+}
+
 export async function GET(request, { params }) {
     try {
         const user = await sessionService.getAuthenticatedUser(request);
@@ -215,9 +251,19 @@ export async function GET(request, { params }) {
                     viewerRole: user.role || "student",
                     isAssignmentEnvironment,
                     assignmentId: assignmentContext?.assignment_id || null,
+                    assignmentTitle: assignmentContext?.assignment_title || null,
+                    assignmentDescription:
+                        assignmentContext?.assignment_description || null,
+                    assignmentDueAt: assignmentContext?.due_at || null,
                     classId: assignmentContext?.class_id || null,
                     templateEnvironmentId:
                         assignmentContext?.template_environment_id || null,
+                    testCases: normalizeJsonArray(
+                        assignmentContext?.test_cases_json,
+                    ),
+                    checklist: normalizeJsonObject(
+                        assignmentContext?.checklist_json,
+                    ),
                     instructionsReadOnly: Boolean(isAssignmentStudentOwner),
                     environmentReadOnly: false,
                     canResetToTemplate,
@@ -244,9 +290,15 @@ export async function GET(request, { params }) {
                 viewerRole: anonymousViewer.viewer.role,
                 isAssignmentEnvironment,
                 assignmentId: assignmentContext?.assignment_id || null,
+                assignmentTitle: assignmentContext?.assignment_title || null,
+                assignmentDescription:
+                    assignmentContext?.assignment_description || null,
+                assignmentDueAt: assignmentContext?.due_at || null,
                 classId: assignmentContext?.class_id || null,
                 templateEnvironmentId:
                     assignmentContext?.template_environment_id || null,
+                testCases: normalizeJsonArray(assignmentContext?.test_cases_json),
+                checklist: normalizeJsonObject(assignmentContext?.checklist_json),
                 instructionsReadOnly: false,
                 environmentReadOnly: false,
                 canResetToTemplate: false,

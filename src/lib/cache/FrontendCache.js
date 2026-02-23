@@ -129,6 +129,10 @@ export class FrontendCacheKeyFactory {
     classAssignments(teacherId, classId) {
         return `classroom:assignments:${teacherId}:${classId}`;
     }
+
+    teacherHelpQueue(teacherId, classId = "all") {
+        return `classroom:help:${teacherId}:${classId || "all"}`;
+    }
 }
 
 export class FrontendCacheInvalidator {

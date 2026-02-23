@@ -22,6 +22,38 @@ function isInstructionsFile(fileName) {
     return (fileName || "").toLowerCase() === "instructions.md";
 }
 
+function isVirtualInstructionsFile(file) {
+    return Boolean(file?.isVirtualInstructions);
+}
+
+function normalizeRequiredFiles(value) {
+    if (
+        value &&
+        typeof value === "object" &&
+        !Array.isArray(value) &&
+        Array.isArray(value.requiredFiles)
+    ) {
+        return normalizeRequiredFiles(value.requiredFiles);
+    }
+
+    if (
+        value &&
+        typeof value === "object" &&
+        !Array.isArray(value) &&
+        Array.isArray(value.required_files)
+    ) {
+        return normalizeRequiredFiles(value.required_files);
+    }
+
+    if (!Array.isArray(value)) {
+        return [];
+    }
+
+    return value
+        .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+        .filter(Boolean);
+}
+
 function escapeHtml(text) {
     return (text || "")
         .replace(/&/g, "&amp;")
@@ -286,7 +318,12 @@ function renderMarkdownToHtml(markdown) {
     return html.join("\n");
 }
 
-export function FileViewer({ className = "col-span-8 row-span-7" }) {
+export function FileViewer({
+    className = "col-span-8 row-span-7",
+    editorFontSize = 14,
+    highContrast = false,
+    reducedMotion = false,
+}) {
     const { environment, setEnvironment } = useEnvironment();
     const [remoteCursors, setRemoteCursors] = useState([]);
     const [markdownMode, setMarkdownMode] = useState("rich");
@@ -318,8 +355,27 @@ export function FileViewer({ className = "col-span-8 row-span-7" }) {
     const isMarkdownFile = fileExtension === "md";
     const isInstructionsMarkdown =
         isMarkdownFile && isInstructionsFile(currentFile?.name);
+    const isVirtualInstructionsMarkdown =
+        isInstructionsMarkdown && isVirtualInstructionsFile(currentFile);
+    const isAssignmentEnvironment = Boolean(
+        environment?.access?.isAssignmentEnvironment,
+    );
+    const assignmentTestCases = Array.isArray(environment?.access?.testCases)
+        ? environment.access.testCases
+        : Array.isArray(environment?.access?.test_cases_json)
+          ? environment.access.test_cases_json
+          : [];
+    const checklistRequiredFiles = normalizeRequiredFiles(
+        environment?.access?.checklist || environment?.access?.checklist_json,
+    );
+    const shouldShowInstructionsContext =
+        isInstructionsMarkdown &&
+        (isAssignmentEnvironment ||
+            assignmentTestCases.length > 0 ||
+            checklistRequiredFiles.length > 0);
     const isInstructionsReadOnly =
-        Boolean(environment?.permissions?.readOnlyInstructions) &&
+        (Boolean(environment?.permissions?.readOnlyInstructions) ||
+            isVirtualInstructionsMarkdown) &&
         isInstructionsMarkdown;
     const isEnvironmentReadOnly = Boolean(
         environment?.permissions?.readOnlyEnvironment,
@@ -893,7 +949,13 @@ export function FileViewer({ className = "col-span-8 row-span-7" }) {
     }, [remoteCursors, environment?.currentFile, environment?.userId]);
 
     return (
-        <div className={cn("flex h-full w-full flex-col overflow-hidden", className)}>
+        <div
+            className={cn(
+                "flex h-full w-full flex-col overflow-hidden",
+                highContrast ? "contrast-125" : "",
+                className,
+            )}
+        >
             <div className="flex items-center justify-between border-b border-zinc-800 px-3 py-2 text-xs text-zinc-400">
                 <div className="min-w-0 truncate">{currentFile?.name || "No file selected"}</div>
                 <div className="flex items-center gap-1">
@@ -941,7 +1003,12 @@ export function FileViewer({ className = "col-span-8 row-span-7" }) {
                     <button
                         type="button"
                         onClick={handleRunLint}
-                        disabled={!currentFile || isFormatting || isLinting}
+                        disabled={
+                            isCurrentFileReadOnly ||
+                            !currentFile ||
+                            isFormatting ||
+                            isLinting
+                        }
                         className="rounded px-2 py-1 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                         {isLinting ? "Linting..." : "Lint"}
@@ -991,6 +1058,58 @@ export function FileViewer({ className = "col-span-8 row-span-7" }) {
                 </div>
             )}
 
+            {shouldShowInstructionsContext ? (
+                <div className="border-b border-zinc-800 bg-zinc-950/70 px-3 py-2 text-xs">
+                    <p className="mb-1 font-medium text-zinc-300">
+                        Assignment context
+                    </p>
+                    {checklistRequiredFiles.length > 0 ? (
+                        <div className="mb-2 rounded border border-zinc-800 bg-zinc-900/70 px-2 py-1.5">
+                            <p className="text-zinc-400">
+                                Checklist required files:
+                            </p>
+                            <p className="mt-1 text-zinc-200">
+                                {checklistRequiredFiles.join(", ")}
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="mb-2 rounded border border-zinc-800 bg-zinc-900/70 px-2 py-1.5">
+                            <p className="text-zinc-400">
+                                Checklist required files:
+                            </p>
+                            <p className="mt-1 text-zinc-500">
+                                No required files configured.
+                            </p>
+                        </div>
+                    )}
+                    {assignmentTestCases.length > 0 ? (
+                        <div className="rounded border border-zinc-800 bg-zinc-900/70 px-2 py-1.5">
+                            <p className="text-zinc-400">Built-in test cases:</p>
+                            <div className="mt-1 space-y-1">
+                                {assignmentTestCases.map((testCase, index) => (
+                                    <p
+                                        key={testCase?.id || `case-${index}`}
+                                        className="text-zinc-200"
+                                    >
+                                        {index + 1}.{" "}
+                                        {testCase?.name
+                                            ? testCase.name
+                                            : `Test ${index + 1}`}
+                                    </p>
+                                ))}
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="rounded border border-zinc-800 bg-zinc-900/70 px-2 py-1.5">
+                            <p className="text-zinc-400">Built-in test cases:</p>
+                            <p className="mt-1 text-zinc-500">
+                                No test cases configured.
+                            </p>
+                        </div>
+                    )}
+                </div>
+            ) : null}
+
             <div className="flex-1 overflow-hidden">
                 {shouldShowRichMarkdown ? (
                     <div className="h-full overflow-auto bg-zinc-950 p-4 text-sm leading-7 text-zinc-200">
@@ -1016,6 +1135,12 @@ export function FileViewer({ className = "col-span-8 row-span-7" }) {
                             minimap: { enabled: false },
                             automaticLayout: true,
                             readOnly: isCurrentFileReadOnly,
+                            fontSize: Math.max(12, Number(editorFontSize) || 14),
+                            lineHeight: Math.max(
+                                18,
+                                Math.round((Number(editorFontSize) || 14) * 1.6),
+                            ),
+                            smoothScrolling: !reducedMotion,
                         }}
                     />
                 )}

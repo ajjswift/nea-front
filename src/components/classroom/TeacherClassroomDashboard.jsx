@@ -6,8 +6,14 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
     ArrowLeft,
     ArrowRight,
+    CalendarClock,
+    ChevronDown,
+    ChevronRight,
     Clipboard,
+    FileCheck,
+    FlaskConical,
     LoaderCircle,
+    LifeBuoy,
     LocateFixed,
     Plus,
     Save,
@@ -17,6 +23,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { DateTimePicker } from "@/components/ui/date-time-picker";
 import {
     Dialog,
     DialogContent,
@@ -37,6 +44,90 @@ import {
 const classroomApiClient = new ClassroomApiClient();
 const environmentApiClient = new EnvironmentApiClient();
 const NEW_ASSIGNMENT_DRAFT_STORAGE_KEY_PREFIX = "classroom:new-assignment-draft:";
+
+function createClientUuid() {
+    if (typeof crypto !== "undefined" && crypto.randomUUID) {
+        return crypto.randomUUID();
+    }
+    return `${Date.now()}-${Math.random()}`;
+}
+
+function createEmptyTestCase() {
+    return {
+        id: createClientUuid(),
+        name: "",
+        input: "",
+        expectedOutput: "",
+    };
+}
+
+function createSampleTestCase() {
+    return {
+        id: createClientUuid(),
+        name: "Sample check",
+        input: "2\n",
+        expectedOutput: "2",
+    };
+}
+
+function normalizeTestCasesForForm(value) {
+    const rawCases = Array.isArray(value) ? value : [];
+    const normalized = rawCases.map((entry) => ({
+        id:
+            typeof entry?.id === "string" && entry.id.trim()
+                ? entry.id.trim()
+                : createClientUuid(),
+        name: typeof entry?.name === "string" ? entry.name : "",
+        input: typeof entry?.input === "string" ? entry.input : "",
+        expectedOutput:
+            typeof entry?.expectedOutput === "string"
+                ? entry.expectedOutput
+                : "",
+    }));
+
+    return normalized.length > 0 ? normalized : [createEmptyTestCase()];
+}
+
+function testCasesToPayload(value) {
+    return normalizeTestCasesForForm(value)
+        .map((testCase) => ({
+            name: `${testCase.name || ""}`.trim(),
+            input: `${testCase.input || ""}`,
+            expectedOutput: `${testCase.expectedOutput || ""}`,
+        }))
+        .filter((testCase) => testCase.name || testCase.input || testCase.expectedOutput);
+}
+
+function checklistRequiredFilesToText(value) {
+    const requiredFiles = Array.isArray(value?.requiredFiles)
+        ? value.requiredFiles
+        : [];
+    return requiredFiles.join(", ");
+}
+
+function checklistTextToPayload(value) {
+    if (typeof value !== "string") {
+        return { requiredFiles: [] };
+    }
+
+    const requiredFiles = [...new Set(
+        value
+            .split(",")
+            .map((entry) => entry.trim())
+            .filter(Boolean),
+    )].slice(0, 20);
+
+    return { requiredFiles };
+}
+
+function formatRequiredFilesPreview(value) {
+    const requiredFiles = checklistTextToPayload(value).requiredFiles;
+    if (requiredFiles.length === 0) {
+        return "No required files";
+    }
+
+    return requiredFiles.join(", ");
+}
 
 function getAssignmentDraftStorageKey(classId) {
     return `${NEW_ASSIGNMENT_DRAFT_STORAGE_KEY_PREFIX}${classId}`;
@@ -95,14 +186,24 @@ export default function TeacherClassroomDashboard() {
         description: "",
         dueAt: "",
         templateEnvironmentId: "",
+        checklistRequiredFiles: "",
+        testCases: [createEmptyTestCase()],
     });
     const [activeAssignmentId, setActiveAssignmentId] = useState(null);
     const [assignmentDraft, setAssignmentDraft] = useState({
         title: "",
         description: "",
         dueAt: "",
+        checklistRequiredFiles: "",
+        testCases: [createEmptyTestCase()],
     });
     const [isCreateAssignmentOpen, setIsCreateAssignmentOpen] = useState(false);
+    const [expandedNewTestCaseId, setExpandedNewTestCaseId] = useState(null);
+    const [expandedDraftTestCaseId, setExpandedDraftTestCaseId] = useState(null);
+    const [activeCreateAssignmentTab, setActiveCreateAssignmentTab] =
+        useState("details");
+    const [activeAssignmentModalTab, setActiveAssignmentModalTab] =
+        useState("details");
     const [isTemplateNamePromptOpen, setIsTemplateNamePromptOpen] = useState(false);
     const [templateNameDraft, setTemplateNameDraft] = useState("");
     const [isStudentsModalOpen, setIsStudentsModalOpen] = useState(false);
@@ -118,6 +219,8 @@ export default function TeacherClassroomDashboard() {
     const [isDeletingAssignment, setIsDeletingAssignment] = useState(false);
     const [isCreatingTemplateEnvironment, setIsCreatingTemplateEnvironment] =
         useState(false);
+    const [helpQueue, setHelpQueue] = useState([]);
+    const [resolvingHelpRequestId, setResolvingHelpRequestId] = useState(null);
     const [errorMessage, setErrorMessage] = useState("");
     const [infoMessage, setInfoMessage] = useState("");
 
@@ -125,6 +228,14 @@ export default function TeacherClassroomDashboard() {
         () => dashboard.classes.find((entry) => entry.id === selectedClassId) || null,
         [dashboard.classes, selectedClassId],
     );
+
+    const selectedClassHelpQueue = useMemo(() => {
+        if (!selectedClassId) {
+            return [];
+        }
+
+        return helpQueue.filter((entry) => entry.classId === selectedClassId);
+    }, [helpQueue, selectedClassId]);
 
     const activeAssignment = useMemo(() => {
         if (!selectedClass || !activeAssignmentId) {
@@ -216,14 +327,67 @@ export default function TeacherClassroomDashboard() {
         return null;
     }, [assignmentDeletionCandidateId, dashboard.classes]);
 
+    const newAssignmentTestCases = useMemo(
+        () => normalizeTestCasesForForm(newAssignment.testCases),
+        [newAssignment.testCases],
+    );
+    const assignmentDraftTestCases = useMemo(
+        () => normalizeTestCasesForForm(assignmentDraft.testCases),
+        [assignmentDraft.testCases],
+    );
+    const newAssignmentRequiredFilesPreview = useMemo(
+        () => formatRequiredFilesPreview(newAssignment.checklistRequiredFiles),
+        [newAssignment.checklistRequiredFiles],
+    );
+    const assignmentDraftRequiredFilesPreview = useMemo(
+        () => formatRequiredFilesPreview(assignmentDraft.checklistRequiredFiles),
+        [assignmentDraft.checklistRequiredFiles],
+    );
+    const newAssignmentConfiguredTestCount = useMemo(
+        () => testCasesToPayload(newAssignmentTestCases).length,
+        [newAssignmentTestCases],
+    );
+    const assignmentDraftConfiguredTestCount = useMemo(
+        () => testCasesToPayload(assignmentDraftTestCases).length,
+        [assignmentDraftTestCases],
+    );
+    const hasAssignmentDraftChanges = useMemo(() => {
+        if (!activeAssignment) {
+            return false;
+        }
+
+        const initialSnapshot = {
+            title: activeAssignment.title || "",
+            description: activeAssignment.description || "",
+            dueAt: toDateTimeLocalValue(activeAssignment.dueAt),
+            checklist: checklistTextToPayload(
+                checklistRequiredFilesToText(activeAssignment.checklist),
+            ),
+            testCases: testCasesToPayload(activeAssignment.testCases),
+        };
+        const draftSnapshot = {
+            title: assignmentDraft.title || "",
+            description: assignmentDraft.description || "",
+            dueAt: assignmentDraft.dueAt || "",
+            checklist: checklistTextToPayload(
+                assignmentDraft.checklistRequiredFiles,
+            ),
+            testCases: testCasesToPayload(assignmentDraft.testCases),
+        };
+
+        return JSON.stringify(initialSnapshot) !== JSON.stringify(draftSnapshot);
+    }, [activeAssignment, assignmentDraft]);
+
     const loadDashboard = useCallback(async () => {
         setIsLoading(true);
         setErrorMessage("");
 
         try {
-            const [dashboardResult, environmentsResult] = await Promise.allSettled([
+            const [dashboardResult, environmentsResult, helpQueueResult] =
+                await Promise.allSettled([
                 classroomApiClient.getDashboard(),
                 environmentApiClient.listEnvironments(),
+                classroomApiClient.getHelpQueue(),
             ]);
 
             if (dashboardResult.status === "rejected") {
@@ -260,6 +424,15 @@ export default function TeacherClassroomDashboard() {
             ) {
                 setTemplateEnvironments([]);
             }
+
+            if (helpQueueResult.status === "fulfilled") {
+                const requests = Array.isArray(helpQueueResult.value?.requests)
+                    ? helpQueueResult.value.requests
+                    : [];
+                setHelpQueue(requests);
+            } else {
+                setHelpQueue([]);
+            }
         } catch (error) {
             if (error instanceof ClassroomApiError && error.status === 403) {
                 setErrorMessage("Teacher account required for classroom features.");
@@ -279,16 +452,45 @@ export default function TeacherClassroomDashboard() {
 
     useEffect(() => {
         if (!activeAssignment) {
-            setAssignmentDraft({ title: "", description: "", dueAt: "" });
+            setAssignmentDraft({
+                title: "",
+                description: "",
+                dueAt: "",
+                checklistRequiredFiles: "",
+                testCases: [createEmptyTestCase()],
+            });
+            setExpandedDraftTestCaseId(null);
             return;
         }
 
-        setAssignmentDraft({
+        const nextDraft = {
             title: activeAssignment.title || "",
             description: activeAssignment.description || "",
             dueAt: toDateTimeLocalValue(activeAssignment.dueAt),
-        });
+            checklistRequiredFiles: checklistRequiredFilesToText(
+                activeAssignment.checklist,
+            ),
+            testCases: normalizeTestCasesForForm(activeAssignment.testCases),
+        };
+        setAssignmentDraft(nextDraft);
+        setExpandedDraftTestCaseId(nextDraft.testCases[0]?.id || null);
+        setActiveAssignmentModalTab("details");
     }, [activeAssignment]);
+
+    useEffect(() => {
+        if (!isCreateAssignmentOpen) {
+            setExpandedNewTestCaseId(null);
+            setActiveCreateAssignmentTab("details");
+            return;
+        }
+
+        setExpandedNewTestCaseId((current) => {
+            if (current && newAssignmentTestCases.some((item) => item.id === current)) {
+                return current;
+            }
+            return newAssignmentTestCases[0]?.id || null;
+        });
+    }, [isCreateAssignmentOpen, newAssignmentTestCases]);
 
     useEffect(() => {
         if (!errorMessage && !infoMessage) {
@@ -343,6 +545,11 @@ export default function TeacherClassroomDashboard() {
                     typeof parsed?.templateEnvironmentId === "string"
                         ? parsed.templateEnvironmentId
                         : "",
+                checklistRequiredFiles:
+                    typeof parsed?.checklistRequiredFiles === "string"
+                        ? parsed.checklistRequiredFiles
+                        : "",
+                testCases: normalizeTestCasesForForm(parsed?.testCases),
             };
         } catch {
             return null;
@@ -397,6 +604,8 @@ export default function TeacherClassroomDashboard() {
                 resumedTemplateEnvironmentId ||
                 storedDraft?.templateEnvironmentId ||
                 "",
+            checklistRequiredFiles: storedDraft?.checklistRequiredFiles || "",
+            testCases: normalizeTestCasesForForm(storedDraft?.testCases),
         });
 
         const nextParams = new URLSearchParams(searchParams.toString());
@@ -510,6 +719,10 @@ export default function TeacherClassroomDashboard() {
                 description: newAssignment.description,
                 dueAt: newAssignment.dueAt || null,
                 templateEnvironmentId: newAssignment.templateEnvironmentId || null,
+                testCases: testCasesToPayload(newAssignment.testCases),
+                checklist: checklistTextToPayload(
+                    newAssignment.checklistRequiredFiles,
+                ),
             });
 
             setIsCreateAssignmentOpen(false);
@@ -518,6 +731,8 @@ export default function TeacherClassroomDashboard() {
                 description: "",
                 dueAt: "",
                 templateEnvironmentId: "",
+                checklistRequiredFiles: "",
+                testCases: [createEmptyTestCase()],
             });
             clearAssignmentDraft(selectedClass.id);
             await loadDashboard();
@@ -565,6 +780,8 @@ export default function TeacherClassroomDashboard() {
                 description: newAssignment.description,
                 dueAt: newAssignment.dueAt,
                 templateEnvironmentId,
+                checklistRequiredFiles: newAssignment.checklistRequiredFiles,
+                testCases: newAssignment.testCases,
             };
             persistAssignmentDraft(selectedClass.id, draftToPersist);
 
@@ -607,6 +824,10 @@ export default function TeacherClassroomDashboard() {
                     title: assignmentDraft.title,
                     description: assignmentDraft.description,
                     dueAt: assignmentDraft.dueAt || null,
+                    testCases: testCasesToPayload(assignmentDraft.testCases),
+                    checklist: checklistTextToPayload(
+                        assignmentDraft.checklistRequiredFiles,
+                    ),
                 },
             );
 
@@ -625,6 +846,17 @@ export default function TeacherClassroomDashboard() {
                                       payload.assignment.template_environment_id ||
                                       assignment.templateEnvironmentId ||
                                       null,
+                                  testCases: Array.isArray(
+                                      payload.assignment.test_cases_json,
+                                  )
+                                      ? payload.assignment.test_cases_json
+                                      : assignment.testCases || [],
+                                  checklist:
+                                      payload.assignment.checklist_json &&
+                                      typeof payload.assignment.checklist_json ===
+                                          "object"
+                                          ? payload.assignment.checklist_json
+                                          : assignment.checklist || {},
                                   updatedAt: payload.assignment.updated_at,
                               }
                             : assignment,
@@ -720,6 +952,171 @@ export default function TeacherClassroomDashboard() {
         } finally {
             setIsDeletingAssignment(false);
         }
+    };
+
+    const handleResolveHelpRequest = async (helpRequestId) => {
+        if (!helpRequestId) {
+            return;
+        }
+
+        setResolvingHelpRequestId(helpRequestId);
+        setErrorMessage("");
+        setInfoMessage("");
+
+        try {
+            await classroomApiClient.resolveHelpRequest(helpRequestId);
+            setHelpQueue((previous) =>
+                previous.filter((entry) => entry.id !== helpRequestId),
+            );
+            setInfoMessage("Help request resolved.");
+        } catch (error) {
+            setErrorMessage(error.message || "Failed to resolve help request.");
+        } finally {
+            setResolvingHelpRequestId(null);
+        }
+    };
+
+    const updateNewAssignmentTestCase = (testCaseId, field, value) => {
+        setNewAssignment((previous) => ({
+            ...previous,
+            testCases: normalizeTestCasesForForm(previous.testCases).map(
+                (testCase) =>
+                    testCase.id === testCaseId
+                        ? { ...testCase, [field]: value }
+                        : testCase,
+            ),
+        }));
+    };
+
+    const addNewAssignmentTestCase = () => {
+        const newCase = createEmptyTestCase();
+        setNewAssignment((previous) => ({
+            ...previous,
+            testCases: [...normalizeTestCasesForForm(previous.testCases), newCase],
+        }));
+        setExpandedNewTestCaseId(newCase.id);
+    };
+
+    const addNewAssignmentSampleTestCase = () => {
+        const newCase = createSampleTestCase();
+        setNewAssignment((previous) => ({
+            ...previous,
+            testCases: [...normalizeTestCasesForForm(previous.testCases), newCase],
+        }));
+        setExpandedNewTestCaseId(newCase.id);
+    };
+
+    const duplicateNewAssignmentTestCase = (testCaseId) => {
+        const sourceCase = newAssignmentTestCases.find(
+            (testCase) => testCase.id === testCaseId,
+        );
+        if (!sourceCase) {
+            return;
+        }
+
+        const duplicate = {
+            ...sourceCase,
+            id: createClientUuid(),
+            name: sourceCase.name
+                ? `${sourceCase.name} (copy)`.slice(0, 120)
+                : "Copy",
+        };
+
+        setNewAssignment((previous) => ({
+            ...previous,
+            testCases: [...normalizeTestCasesForForm(previous.testCases), duplicate],
+        }));
+        setExpandedNewTestCaseId(duplicate.id);
+    };
+
+    const removeNewAssignmentTestCase = (testCaseId) => {
+        setNewAssignment((previous) => {
+            const nextCases = normalizeTestCasesForForm(previous.testCases).filter(
+                (testCase) => testCase.id !== testCaseId,
+            );
+            const fallbackCase = createEmptyTestCase();
+            const nextValue = nextCases.length > 0 ? nextCases : [fallbackCase];
+            const nextExpanded =
+                nextValue.find((testCase) => testCase.id !== testCaseId)?.id ||
+                nextValue[0]?.id ||
+                null;
+            setExpandedNewTestCaseId(nextExpanded);
+
+            return {
+                ...previous,
+                testCases: nextValue,
+            };
+        });
+    };
+
+    const updateAssignmentDraftTestCase = (testCaseId, field, value) => {
+        setAssignmentDraft((previous) => ({
+            ...previous,
+            testCases: normalizeTestCasesForForm(previous.testCases).map((testCase) =>
+                testCase.id === testCaseId
+                    ? { ...testCase, [field]: value }
+                    : testCase,
+            ),
+        }));
+    };
+
+    const addAssignmentDraftTestCase = () => {
+        const newCase = createEmptyTestCase();
+        setAssignmentDraft((previous) => ({
+            ...previous,
+            testCases: [...normalizeTestCasesForForm(previous.testCases), newCase],
+        }));
+        setExpandedDraftTestCaseId(newCase.id);
+    };
+
+    const addAssignmentDraftSampleTestCase = () => {
+        const newCase = createSampleTestCase();
+        setAssignmentDraft((previous) => ({
+            ...previous,
+            testCases: [...normalizeTestCasesForForm(previous.testCases), newCase],
+        }));
+        setExpandedDraftTestCaseId(newCase.id);
+    };
+
+    const duplicateAssignmentDraftTestCase = (testCaseId) => {
+        const sourceCase = assignmentDraftTestCases.find(
+            (testCase) => testCase.id === testCaseId,
+        );
+        if (!sourceCase) {
+            return;
+        }
+
+        const duplicate = {
+            ...sourceCase,
+            id: createClientUuid(),
+            name: sourceCase.name
+                ? `${sourceCase.name} (copy)`.slice(0, 120)
+                : "Copy",
+        };
+        setAssignmentDraft((previous) => ({
+            ...previous,
+            testCases: [...normalizeTestCasesForForm(previous.testCases), duplicate],
+        }));
+        setExpandedDraftTestCaseId(duplicate.id);
+    };
+
+    const removeAssignmentDraftTestCase = (testCaseId) => {
+        setAssignmentDraft((previous) => {
+            const nextCases = normalizeTestCasesForForm(previous.testCases).filter(
+                (testCase) => testCase.id !== testCaseId,
+            );
+            const fallbackCase = createEmptyTestCase();
+            const nextValue = nextCases.length > 0 ? nextCases : [fallbackCase];
+            const nextExpanded =
+                nextValue.find((testCase) => testCase.id !== testCaseId)?.id ||
+                nextValue[0]?.id ||
+                null;
+            setExpandedDraftTestCaseId(nextExpanded);
+            return {
+                ...previous,
+                testCases: nextValue,
+            };
+        });
     };
 
     return (
@@ -886,6 +1283,96 @@ export default function TeacherClassroomDashboard() {
                                                 Manage students
                                             </Button>
                                         </div>
+                                    </section>
+
+                                    <section className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+                                        <div className="mb-3 flex items-center justify-between gap-3">
+                                            <div>
+                                                <h3 className="inline-flex items-center gap-1 text-sm font-medium">
+                                                    <LifeBuoy className="size-4 text-zinc-400" />
+                                                    Office-hours help queue
+                                                </h3>
+                                                <p className="mt-1 text-xs text-zinc-500">
+                                                    Open requests from students in this class.
+                                                </p>
+                                            </div>
+                                            <span className="rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-300">
+                                                {selectedClassHelpQueue.length} open
+                                            </span>
+                                        </div>
+
+                                        {selectedClassHelpQueue.length === 0 ? (
+                                            <p className="text-sm text-zinc-500">
+                                                No open help requests.
+                                            </p>
+                                        ) : (
+                                            <div className="space-y-2">
+                                                {selectedClassHelpQueue.map((request) => (
+                                                    <div
+                                                        key={request.id}
+                                                        className="rounded border border-zinc-800 bg-zinc-950/50 p-3"
+                                                    >
+                                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                                            <div className="min-w-0">
+                                                                <p className="truncate text-sm font-medium text-zinc-100">
+                                                                    {request.studentUsername}
+                                                                </p>
+                                                                <p className="text-xs text-zinc-500">
+                                                                    {request.assignmentTitle ||
+                                                                        "Assignment"}{" "}
+                                                                    ·{" "}
+                                                                    {new Date(
+                                                                        request.createdAt,
+                                                                    ).toLocaleString()}
+                                                                </p>
+                                                            </div>
+                                                            <div className="flex items-center gap-2">
+                                                                <Button
+                                                                    asChild
+                                                                    size="sm"
+                                                                    variant="outline"
+                                                                    className="h-7 text-xs"
+                                                                >
+                                                                    <Link
+                                                                        href={buildFollowEnvironmentHref(
+                                                                            request.environmentId,
+                                                                            request.studentId,
+                                                                        )}
+                                                                    >
+                                                                        Follow live
+                                                                    </Link>
+                                                                </Button>
+                                                                <Button
+                                                                    size="sm"
+                                                                    variant="outline"
+                                                                    className="h-7 border-emerald-400/50 text-emerald-200 hover:bg-emerald-500/10"
+                                                                    disabled={
+                                                                        resolvingHelpRequestId ===
+                                                                        request.id
+                                                                    }
+                                                                    onClick={() =>
+                                                                        handleResolveHelpRequest(
+                                                                            request.id,
+                                                                        )
+                                                                    }
+                                                                >
+                                                                    {resolvingHelpRequestId ===
+                                                                    request.id ? (
+                                                                        <LoaderCircle className="size-3.5 animate-spin" />
+                                                                    ) : (
+                                                                        "Resolve"
+                                                                    )}
+                                                                </Button>
+                                                            </div>
+                                                        </div>
+                                                        <p className="mt-2 text-sm text-zinc-300">
+                                                            {request.message ||
+                                                                "No message provided."}
+                                                        </p>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
                                     </section>
 
                                     <section className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900">
@@ -1137,93 +1624,371 @@ export default function TeacherClassroomDashboard() {
                 open={isCreateAssignmentOpen}
                 onOpenChange={setIsCreateAssignmentOpen}
             >
-                <DialogContent className="max-w-xl">
+                <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle>New assignment</DialogTitle>
                         <DialogDescription>
-                            Create an assignment and optionally base it on a template environment.
+                            Set core details first, then add checklist rules and test cases.
                         </DialogDescription>
                     </DialogHeader>
 
-                    <form className="space-y-3" onSubmit={handleCreateAssignment}>
-                        <Input
-                            placeholder="Assignment title"
-                            value={newAssignment.title}
-                            onChange={(event) =>
-                                setNewAssignment((prev) => ({
-                                    ...prev,
-                                    title: event.target.value,
-                                }))
-                            }
-                            maxLength={160}
-                        />
-                        <Textarea
-                            placeholder="Assignment description (optional)"
-                            value={newAssignment.description}
-                            onChange={(event) =>
-                                setNewAssignment((prev) => ({
-                                    ...prev,
-                                    description: event.target.value,
-                                }))
-                            }
-                            maxLength={2000}
-                        />
-                        <Input
-                            type="datetime-local"
-                            value={newAssignment.dueAt}
-                            onChange={(event) =>
-                                setNewAssignment((prev) => ({
-                                    ...prev,
-                                    dueAt: event.target.value,
-                                }))
-                            }
-                        />
-                        <div>
-                            <label
-                                htmlFor="templateEnvironment"
-                                className="mb-1 block text-xs text-zinc-400"
-                            >
-                                Template environment
-                            </label>
-                            <select
-                                id="templateEnvironment"
-                                value={newAssignment.templateEnvironmentId}
-                                onChange={(event) =>
-                                    setNewAssignment((prev) => ({
-                                        ...prev,
-                                        templateEnvironmentId: event.target.value,
-                                    }))
-                                }
-                                className="h-9 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100"
-                            >
-                                <option value="">Blank environment</option>
-                                {templateEnvironments.map((environment) => (
-                                    <option key={environment.id} value={environment.id}>
-                                        {environment.name}
-                                    </option>
-                                ))}
-                            </select>
+                    <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-xs text-zinc-400">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <span className="inline-flex items-center gap-1 rounded border border-zinc-700 px-2 py-1">
+                                <CalendarClock className="size-3.5" />
+                                {newAssignment.dueAt
+                                    ? formatDueLabel(newAssignment.dueAt)
+                                    : "No due date"}
+                            </span>
+                            <span className="inline-flex items-center gap-1 rounded border border-zinc-700 px-2 py-1">
+                                <FileCheck className="size-3.5" />
+                                {newAssignmentRequiredFilesPreview}
+                            </span>
+                            <span className="inline-flex items-center gap-1 rounded border border-zinc-700 px-2 py-1">
+                                <FlaskConical className="size-3.5" />
+                                {newAssignmentConfiguredTestCount} test case
+                                {newAssignmentConfiguredTestCount === 1
+                                    ? ""
+                                    : "s"}
+                            </span>
                         </div>
-                        <Button
-                            type="button"
-                            variant="outline"
-                            disabled={isSaving || isCreatingTemplateEnvironment}
-                            onClick={() => {
-                                setTemplateNameDraft("");
-                                setIsTemplateNamePromptOpen(true);
-                            }}
-                        >
-                            {isCreatingTemplateEnvironment ? (
-                                <>
-                                    <LoaderCircle className="size-4 animate-spin" />
-                                    Opening template editor...
-                                </>
-                            ) : (
-                                "Create template environment"
-                            )}
-                        </Button>
+                    </div>
 
-                        <DialogFooter>
+                    <form className="space-y-4" onSubmit={handleCreateAssignment}>
+                        <div className="flex flex-wrap items-center gap-2 border-b border-zinc-800 pb-2">
+                            <Button
+                                type="button"
+                                size="sm"
+                                variant={
+                                    activeCreateAssignmentTab === "details"
+                                        ? "default"
+                                        : "outline"
+                                }
+                                className={
+                                    activeCreateAssignmentTab === "details"
+                                        ? "bg-zinc-100 text-zinc-900 hover:bg-zinc-200"
+                                        : ""
+                                }
+                                onClick={(event) => {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    setActiveCreateAssignmentTab("details");
+                                }}
+                            >
+                                1. Details
+                            </Button>
+                            <Button
+                                type="button"
+                                size="sm"
+                                variant={
+                                    activeCreateAssignmentTab === "checks"
+                                        ? "default"
+                                        : "outline"
+                                }
+                                className={
+                                    activeCreateAssignmentTab === "checks"
+                                        ? "bg-zinc-100 text-zinc-900 hover:bg-zinc-200"
+                                        : ""
+                                }
+                                onClick={(event) => {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    setActiveCreateAssignmentTab("checks");
+                                }}
+                            >
+                                2. Checks
+                            </Button>
+                            <p className="ml-auto text-xs text-zinc-500">
+                                {activeCreateAssignmentTab === "details"
+                                    ? "Step 1 of 2"
+                                    : "Step 2 of 2"}
+                            </p>
+                        </div>
+
+                        {activeCreateAssignmentTab === "details" ? (
+                            <>
+                                <section className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+                                    <h4 className="text-sm font-medium text-zinc-100">
+                                        Basics
+                                    </h4>
+                                    <p className="mt-1 text-xs text-zinc-500">
+                                        These are what students will see first.
+                                    </p>
+                                    <div className="mt-3 grid gap-3 md:grid-cols-[1fr_220px]">
+                                        <div>
+                                            <label className="mb-1 block text-xs text-zinc-400">
+                                                Assignment title
+                                            </label>
+                                            <Input
+                                                placeholder="e.g. Variables and input challenge"
+                                                value={newAssignment.title}
+                                                onChange={(event) =>
+                                                    setNewAssignment((prev) => ({
+                                                        ...prev,
+                                                        title: event.target.value,
+                                                    }))
+                                                }
+                                                maxLength={160}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="mb-1 block text-xs text-zinc-400">
+                                                Due date
+                                            </label>
+                                            <DateTimePicker
+                                                value={newAssignment.dueAt}
+                                                onChange={(nextDueAt) =>
+                                                    setNewAssignment((prev) => ({
+                                                        ...prev,
+                                                        dueAt: nextDueAt,
+                                                    }))
+                                                }
+                                                placeholder="No due date"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="mt-3">
+                                        <label className="mb-1 block text-xs text-zinc-400">
+                                            Assignment description
+                                        </label>
+                                        <Textarea
+                                            placeholder="What should students build or practice?"
+                                            value={newAssignment.description}
+                                            onChange={(event) =>
+                                                setNewAssignment((prev) => ({
+                                                    ...prev,
+                                                    description: event.target.value,
+                                                }))
+                                            }
+                                            maxLength={2000}
+                                        />
+                                    </div>
+                                </section>
+
+                                <section className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+                                    <h4 className="text-sm font-medium text-zinc-100">
+                                        Template
+                                    </h4>
+                                    <p className="mt-1 text-xs text-zinc-500">
+                                        Start from a blank environment or your prepared template.
+                                    </p>
+                                    <div className="mt-3 space-y-3">
+                                        <div>
+                                            <label
+                                                htmlFor="templateEnvironment"
+                                                className="mb-1 block text-xs text-zinc-400"
+                                            >
+                                                Template environment
+                                            </label>
+                                            <select
+                                                id="templateEnvironment"
+                                                value={newAssignment.templateEnvironmentId}
+                                                onChange={(event) =>
+                                                    setNewAssignment((prev) => ({
+                                                        ...prev,
+                                                        templateEnvironmentId:
+                                                            event.target.value,
+                                                    }))
+                                                }
+                                                className="h-9 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100"
+                                            >
+                                                <option value="">Blank environment</option>
+                                                {templateEnvironments.map((environment) => (
+                                                    <option
+                                                        key={environment.id}
+                                                        value={environment.id}
+                                                    >
+                                                        {environment.name}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            disabled={isSaving || isCreatingTemplateEnvironment}
+                                            onClick={() => {
+                                                setTemplateNameDraft("");
+                                                setIsTemplateNamePromptOpen(true);
+                                            }}
+                                        >
+                                            {isCreatingTemplateEnvironment ? (
+                                                <>
+                                                    <LoaderCircle className="size-4 animate-spin" />
+                                                    Opening template editor...
+                                                </>
+                                            ) : (
+                                                "Create template environment"
+                                            )}
+                                        </Button>
+                                    </div>
+                                </section>
+                            </>
+                        ) : (
+                            <section className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+                                <h4 className="text-sm font-medium text-zinc-100">
+                                    Assignment checks
+                                </h4>
+                                <p className="mt-1 text-xs text-zinc-500">
+                                    Define required files and built-in test cases.
+                                </p>
+                                <div className="mt-3">
+                                    <label className="mb-1 block text-xs text-zinc-400">
+                                        Checklist required files
+                                    </label>
+                                    <Input
+                                        placeholder="main.py, helpers.py"
+                                        value={newAssignment.checklistRequiredFiles}
+                                        onChange={(event) =>
+                                            setNewAssignment((prev) => ({
+                                                ...prev,
+                                                checklistRequiredFiles: event.target.value,
+                                            }))
+                                        }
+                                    />
+                                    <p className="mt-1 text-xs text-zinc-500">
+                                        Comma separated file names.
+                                    </p>
+                                </div>
+                                <div className="mt-4 space-y-2 rounded border border-zinc-800 bg-zinc-950/40 p-3">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <p className="text-xs font-medium text-zinc-300">
+                                            Built-in test cases
+                                        </p>
+                                        <div className="flex items-center gap-2">
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                variant="outline"
+                                                className="h-7 text-xs"
+                                                onClick={addNewAssignmentSampleTestCase}
+                                            >
+                                                Add sample
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                variant="outline"
+                                                className="h-7 text-xs"
+                                                onClick={addNewAssignmentTestCase}
+                                            >
+                                                <Plus className="size-3.5" />
+                                                Add blank
+                                            </Button>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2">
+                                        {newAssignmentTestCases.map((testCase, index) => {
+                                            const isExpanded =
+                                                expandedNewTestCaseId === testCase.id;
+                                            const testCaseLabel =
+                                                testCase.name?.trim() ||
+                                                `Test ${index + 1}`;
+
+                                            return (
+                                                <div
+                                                    key={testCase.id}
+                                                    className="rounded border border-zinc-800 bg-zinc-950/70"
+                                                >
+                                                    <div className="flex items-center justify-between gap-2 px-2 py-1.5">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() =>
+                                                                setExpandedNewTestCaseId(
+                                                                    isExpanded
+                                                                        ? null
+                                                                        : testCase.id,
+                                                                )
+                                                            }
+                                                            className="flex min-w-0 flex-1 items-center gap-2 text-left text-xs text-zinc-200"
+                                                        >
+                                                            {isExpanded ? (
+                                                                <ChevronDown className="size-3.5 text-zinc-400" />
+                                                            ) : (
+                                                                <ChevronRight className="size-3.5 text-zinc-400" />
+                                                            )}
+                                                            <span className="truncate">
+                                                                {testCaseLabel}
+                                                            </span>
+                                                        </button>
+                                                        <div className="flex items-center gap-1">
+                                                            <Button
+                                                                type="button"
+                                                                size="sm"
+                                                                variant="ghost"
+                                                                className="h-6 px-2 text-[11px] text-zinc-300 hover:bg-zinc-800"
+                                                                onClick={() =>
+                                                                    duplicateNewAssignmentTestCase(
+                                                                        testCase.id,
+                                                                    )
+                                                                }
+                                                            >
+                                                                Duplicate
+                                                            </Button>
+                                                            <Button
+                                                                type="button"
+                                                                size="sm"
+                                                                variant="ghost"
+                                                                className="h-6 px-2 text-[11px] text-red-300 hover:bg-red-500/10"
+                                                                onClick={() =>
+                                                                    removeNewAssignmentTestCase(
+                                                                        testCase.id,
+                                                                    )
+                                                                }
+                                                            >
+                                                                Remove
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                    {isExpanded ? (
+                                                        <div className="space-y-2 border-t border-zinc-800 px-2 py-2">
+                                                            <Input
+                                                                placeholder={`Test ${index + 1} name`}
+                                                                value={testCase.name}
+                                                                onChange={(event) =>
+                                                                    updateNewAssignmentTestCase(
+                                                                        testCase.id,
+                                                                        "name",
+                                                                        event.target.value,
+                                                                    )
+                                                                }
+                                                                maxLength={120}
+                                                            />
+                                                            <Textarea
+                                                                placeholder="Input (optional)"
+                                                                value={testCase.input}
+                                                                onChange={(event) =>
+                                                                    updateNewAssignmentTestCase(
+                                                                        testCase.id,
+                                                                        "input",
+                                                                        event.target.value,
+                                                                    )
+                                                                }
+                                                                className="min-h-16"
+                                                            />
+                                                            <Textarea
+                                                                placeholder="Expected output"
+                                                                value={testCase.expectedOutput}
+                                                                onChange={(event) =>
+                                                                    updateNewAssignmentTestCase(
+                                                                        testCase.id,
+                                                                        "expectedOutput",
+                                                                        event.target.value,
+                                                                    )
+                                                                }
+                                                                className="min-h-20"
+                                                            />
+                                                        </div>
+                                                    ) : null}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            </section>
+                        )}
+
+                        <DialogFooter className="border-t border-zinc-800 pt-3">
                             <Button
                                 type="button"
                                 variant="outline"
@@ -1231,23 +1996,56 @@ export default function TeacherClassroomDashboard() {
                             >
                                 Cancel
                             </Button>
-                            <Button
-                                type="submit"
-                                disabled={isSaving || isCreatingTemplateEnvironment}
-                                className="bg-zinc-100 text-zinc-900 hover:bg-zinc-200"
-                            >
-                                {isSaving ? (
-                                    <>
-                                        <LoaderCircle className="size-4 animate-spin" />
-                                        Creating
-                                    </>
-                                ) : (
-                                    <>
-                                        <Plus className="size-4" />
-                                        Create assignment
-                                    </>
-                                )}
-                            </Button>
+                            {activeCreateAssignmentTab === "checks" ? (
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={(event) => {
+                                        event.preventDefault();
+                                        event.stopPropagation();
+                                        setActiveCreateAssignmentTab("details");
+                                    }}
+                                >
+                                    Back to details
+                                </Button>
+                            ) : null}
+                            {activeCreateAssignmentTab === "details" ? (
+                                <Button
+                                    type="button"
+                                    disabled={!newAssignment.title.trim()}
+                                    className="bg-zinc-100 text-zinc-900 hover:bg-zinc-200"
+                                    onClick={(event) => {
+                                        event.preventDefault();
+                                        event.stopPropagation();
+                                        setActiveCreateAssignmentTab("checks");
+                                    }}
+                                >
+                                    Continue to checks
+                                    <ArrowRight className="size-4" />
+                                </Button>
+                            ) : (
+                                <Button
+                                    type="submit"
+                                    disabled={
+                                        isSaving ||
+                                        isCreatingTemplateEnvironment ||
+                                        !newAssignment.title.trim()
+                                    }
+                                    className="bg-zinc-100 text-zinc-900 hover:bg-zinc-200"
+                                >
+                                    {isSaving ? (
+                                        <>
+                                            <LoaderCircle className="size-4 animate-spin" />
+                                            Creating
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Plus className="size-4" />
+                                            Create assignment
+                                        </>
+                                    )}
+                                </Button>
+                            )}
                         </DialogFooter>
                     </form>
                 </DialogContent>
@@ -1315,129 +2113,486 @@ export default function TeacherClassroomDashboard() {
                     }
                 }}
             >
-                <DialogContent className="max-w-2xl">
+                <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
                     {!activeAssignment ? null : (
                         <>
                             <DialogHeader>
                                 <DialogTitle>{activeAssignment.title}</DialogTitle>
                                 <DialogDescription>
-                                    Update assignment details and open student environments.
+                                    Update details, checks, and student links.
                                 </DialogDescription>
                             </DialogHeader>
 
-                            <form className="space-y-3" onSubmit={handleUpdateAssignment}>
-                                <Input
-                                    value={assignmentDraft.title}
-                                    onChange={(event) =>
-                                        setAssignmentDraft((prev) => ({
-                                            ...prev,
-                                            title: event.target.value,
-                                        }))
-                                    }
-                                    maxLength={160}
-                                />
-                                <Textarea
-                                    value={assignmentDraft.description}
-                                    onChange={(event) =>
-                                        setAssignmentDraft((prev) => ({
-                                            ...prev,
-                                            description: event.target.value,
-                                        }))
-                                    }
-                                    maxLength={2000}
-                                />
-                                <Input
-                                    type="datetime-local"
-                                    value={assignmentDraft.dueAt}
-                                    onChange={(event) =>
-                                        setAssignmentDraft((prev) => ({
-                                            ...prev,
-                                            dueAt: event.target.value,
-                                        }))
-                                    }
-                                />
+                            <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-xs text-zinc-400">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <span className="inline-flex items-center gap-1 rounded border border-zinc-700 px-2 py-1">
+                                        <CalendarClock className="size-3.5" />
+                                        {assignmentDraft.dueAt
+                                            ? formatDueLabel(assignmentDraft.dueAt)
+                                            : "No due date"}
+                                    </span>
+                                    <span className="inline-flex items-center gap-1 rounded border border-zinc-700 px-2 py-1">
+                                        <FileCheck className="size-3.5" />
+                                        {assignmentDraftRequiredFilesPreview}
+                                    </span>
+                                    <span className="inline-flex items-center gap-1 rounded border border-zinc-700 px-2 py-1">
+                                        <FlaskConical className="size-3.5" />
+                                        {assignmentDraftConfiguredTestCount} test case
+                                        {assignmentDraftConfiguredTestCount === 1
+                                            ? ""
+                                            : "s"}
+                                    </span>
+                                </div>
+                            </div>
 
-                                <p className="text-xs text-zinc-500">
-                                    Template: {activeAssignment.templateEnvironmentName || "Blank environment"}
-                                </p>
+                            <div className="flex flex-wrap items-center gap-2 border-b border-zinc-800 pb-2">
+                                <Button
+                                    type="button"
+                                    size="sm"
+                                    variant={
+                                        activeAssignmentModalTab === "details"
+                                            ? "default"
+                                            : "outline"
+                                    }
+                                    className={
+                                        activeAssignmentModalTab === "details"
+                                            ? "bg-zinc-100 text-zinc-900 hover:bg-zinc-200"
+                                            : ""
+                                    }
+                                    onClick={(event) => {
+                                        event.preventDefault();
+                                        event.stopPropagation();
+                                        setActiveAssignmentModalTab("details");
+                                    }}
+                                >
+                                    Details
+                                </Button>
+                                <Button
+                                    type="button"
+                                    size="sm"
+                                    variant={
+                                        activeAssignmentModalTab === "checks"
+                                            ? "default"
+                                            : "outline"
+                                    }
+                                    className={
+                                        activeAssignmentModalTab === "checks"
+                                            ? "bg-zinc-100 text-zinc-900 hover:bg-zinc-200"
+                                            : ""
+                                    }
+                                    onClick={(event) => {
+                                        event.preventDefault();
+                                        event.stopPropagation();
+                                        setActiveAssignmentModalTab("checks");
+                                    }}
+                                >
+                                    Checks
+                                </Button>
+                                <Button
+                                    type="button"
+                                    size="sm"
+                                    variant={
+                                        activeAssignmentModalTab === "students"
+                                            ? "default"
+                                            : "outline"
+                                    }
+                                    className={
+                                        activeAssignmentModalTab === "students"
+                                            ? "bg-zinc-100 text-zinc-900 hover:bg-zinc-200"
+                                            : ""
+                                    }
+                                    onClick={(event) => {
+                                        event.preventDefault();
+                                        event.stopPropagation();
+                                        setActiveAssignmentModalTab("students");
+                                    }}
+                                >
+                                    Student environments
+                                </Button>
+                            </div>
 
-                                <DialogFooter>
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        className="border-red-400/40 text-red-200 hover:bg-red-500/10"
-                                        disabled={isSaving || isDeletingAssignment}
-                                        onClick={() =>
-                                            setAssignmentDeletionCandidateId(
-                                                activeAssignment.id,
-                                            )
-                                        }
-                                    >
-                                        Delete assignment
-                                    </Button>
-                                    <Button
-                                        type="submit"
-                                        disabled={isSaving}
-                                        className="bg-zinc-100 text-zinc-900 hover:bg-zinc-200"
-                                    >
-                                        {isSaving ? (
+                            {activeAssignmentModalTab === "students" ? (
+                                <div className="rounded border border-zinc-800">
+                                    <div className="grid grid-cols-[1fr_auto] border-b border-zinc-800 bg-zinc-950/50 px-3 py-2 text-xs text-zinc-500">
+                                        <span>Student</span>
+                                        <span>Environment</span>
+                                    </div>
+                                    {activeAssignment.environments.length === 0 ? (
+                                        <p className="px-3 py-3 text-sm text-zinc-400">
+                                            No student environments linked.
+                                        </p>
+                                    ) : (
+                                        activeAssignment.environments.map((entry) => (
+                                            <div
+                                                key={entry.assignmentEnvironmentId}
+                                                className="grid grid-cols-[1fr_auto] items-center gap-3 border-b border-zinc-800 px-3 py-2 last:border-b-0"
+                                            >
+                                                <span className="text-sm text-zinc-200">
+                                                    {entry.studentUsername}
+                                                </span>
+                                                <div className="flex items-center gap-2">
+                                                    <Button asChild size="sm" variant="outline">
+                                                        <Link
+                                                            href={buildFollowEnvironmentHref(
+                                                                entry.environmentId,
+                                                                entry.studentId,
+                                                            )}
+                                                        >
+                                                            <LocateFixed className="size-4" />
+                                                            Follow live
+                                                        </Link>
+                                                    </Button>
+                                                    <Button asChild size="sm" variant="outline">
+                                                        <Link
+                                                            href={`/environment/${entry.environmentId}`}
+                                                        >
+                                                            Open
+                                                            <ArrowRight className="size-4" />
+                                                        </Link>
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            ) : (
+                                <form className="space-y-4" onSubmit={handleUpdateAssignment}>
+                                    {activeAssignmentModalTab === "details" ? (
+                                        <>
+                                            <section className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+                                                <h4 className="text-sm font-medium text-zinc-100">
+                                                    Basics
+                                                </h4>
+                                                <div className="mt-3 grid gap-3 md:grid-cols-[1fr_220px]">
+                                                    <div>
+                                                        <label className="mb-1 block text-xs text-zinc-400">
+                                                            Assignment title
+                                                        </label>
+                                                        <Input
+                                                            value={assignmentDraft.title}
+                                                            onChange={(event) =>
+                                                                setAssignmentDraft((prev) => ({
+                                                                    ...prev,
+                                                                    title: event.target.value,
+                                                                }))
+                                                            }
+                                                            maxLength={160}
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="mb-1 block text-xs text-zinc-400">
+                                                            Due date
+                                                        </label>
+                                                        <DateTimePicker
+                                                            value={assignmentDraft.dueAt}
+                                                            onChange={(nextDueAt) =>
+                                                                setAssignmentDraft(
+                                                                    (prev) => ({
+                                                                        ...prev,
+                                                                        dueAt: nextDueAt,
+                                                                    }),
+                                                                )
+                                                            }
+                                                            placeholder="No due date"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div className="mt-3">
+                                                    <label className="mb-1 block text-xs text-zinc-400">
+                                                        Assignment description
+                                                    </label>
+                                                    <Textarea
+                                                        value={assignmentDraft.description}
+                                                        onChange={(event) =>
+                                                            setAssignmentDraft((prev) => ({
+                                                                ...prev,
+                                                                description:
+                                                                    event.target.value,
+                                                            }))
+                                                        }
+                                                        maxLength={2000}
+                                                    />
+                                                </div>
+                                            </section>
+
+                                            <section className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+                                                <h4 className="text-sm font-medium text-zinc-100">
+                                                    Template
+                                                </h4>
+                                                <p className="mt-1 text-xs text-zinc-500">
+                                                    Template is fixed after creation.
+                                                </p>
+                                                <p className="mt-3 rounded border border-zinc-700 bg-zinc-950/60 px-3 py-2 text-sm text-zinc-300">
+                                                    {activeAssignment.templateEnvironmentName ||
+                                                        "Blank environment"}
+                                                </p>
+                                            </section>
+                                        </>
+                                    ) : (
+                                        <section className="min-w-0 rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+                                            <h4 className="text-sm font-medium text-zinc-100">
+                                                Assignment checks
+                                            </h4>
+                                            <div className="mt-3">
+                                                <label className="mb-1 block text-xs text-zinc-400">
+                                                    Checklist required files
+                                                </label>
+                                                <Input
+                                                    placeholder="main.py, helpers.py"
+                                                    value={
+                                                        assignmentDraft.checklistRequiredFiles
+                                                    }
+                                                    onChange={(event) =>
+                                                        setAssignmentDraft((prev) => ({
+                                                            ...prev,
+                                                            checklistRequiredFiles:
+                                                                event.target.value,
+                                                        }))
+                                                    }
+                                                />
+                                            </div>
+
+                                            <div className="mt-4 space-y-2 rounded border border-zinc-800 bg-zinc-950/40 p-3">
+                                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                                    <p className="text-xs font-medium text-zinc-300">
+                                                        Built-in test cases
+                                                    </p>
+                                                    <div className="flex items-center gap-2">
+                                                        <Button
+                                                            type="button"
+                                                            size="sm"
+                                                            variant="outline"
+                                                            className="h-7 text-xs"
+                                                            onClick={
+                                                                addAssignmentDraftSampleTestCase
+                                                            }
+                                                        >
+                                                            Add sample
+                                                        </Button>
+                                                        <Button
+                                                            type="button"
+                                                            size="sm"
+                                                            variant="outline"
+                                                            className="h-7 text-xs"
+                                                            onClick={
+                                                                addAssignmentDraftTestCase
+                                                            }
+                                                        >
+                                                            <Plus className="size-3.5" />
+                                                            Add blank
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                                <div className="space-y-2">
+                                                    {assignmentDraftTestCases.map(
+                                                        (testCase, index) => {
+                                                            const isExpanded =
+                                                                expandedDraftTestCaseId ===
+                                                                testCase.id;
+                                                            const testCaseLabel =
+                                                                testCase.name?.trim() ||
+                                                                `Test ${index + 1}`;
+
+                                                            return (
+                                                                <div
+                                                                    key={testCase.id}
+                                                                    className="rounded border border-zinc-800 bg-zinc-950/70"
+                                                                >
+                                                                    <div className="flex items-center justify-between gap-2 px-2 py-1.5">
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() =>
+                                                                                setExpandedDraftTestCaseId(
+                                                                                    isExpanded
+                                                                                        ? null
+                                                                                        : testCase.id,
+                                                                                )
+                                                                            }
+                                                                            className="flex min-w-0 flex-1 items-center gap-2 text-left text-xs text-zinc-200"
+                                                                        >
+                                                                            {isExpanded ? (
+                                                                                <ChevronDown className="size-3.5 text-zinc-400" />
+                                                                            ) : (
+                                                                                <ChevronRight className="size-3.5 text-zinc-400" />
+                                                                            )}
+                                                                            <span className="truncate">
+                                                                                {testCaseLabel}
+                                                                            </span>
+                                                                        </button>
+                                                                        <div className="flex items-center gap-1">
+                                                                            <Button
+                                                                                type="button"
+                                                                                size="sm"
+                                                                                variant="ghost"
+                                                                                className="h-6 px-2 text-[11px] text-zinc-300 hover:bg-zinc-800"
+                                                                                onClick={() =>
+                                                                                    duplicateAssignmentDraftTestCase(
+                                                                                        testCase.id,
+                                                                                    )
+                                                                                }
+                                                                            >
+                                                                                Duplicate
+                                                                            </Button>
+                                                                            <Button
+                                                                                type="button"
+                                                                                size="sm"
+                                                                                variant="ghost"
+                                                                                className="h-6 px-2 text-[11px] text-red-300 hover:bg-red-500/10"
+                                                                                onClick={() =>
+                                                                                    removeAssignmentDraftTestCase(
+                                                                                        testCase.id,
+                                                                                    )
+                                                                                }
+                                                                            >
+                                                                                Remove
+                                                                            </Button>
+                                                                        </div>
+                                                                    </div>
+                                                                    {isExpanded ? (
+                                                                        <div className="space-y-2 border-t border-zinc-800 px-2 py-2">
+                                                                            <Input
+                                                                                placeholder={`Test ${index + 1} name`}
+                                                                                value={testCase.name}
+                                                                                onChange={(event) =>
+                                                                                    updateAssignmentDraftTestCase(
+                                                                                        testCase.id,
+                                                                                        "name",
+                                                                                        event.target.value,
+                                                                                    )
+                                                                                }
+                                                                                maxLength={120}
+                                                                            />
+                                                                            <Textarea
+                                                                                placeholder="Input (optional)"
+                                                                                value={
+                                                                                    testCase.input
+                                                                                }
+                                                                                onChange={(event) =>
+                                                                                    updateAssignmentDraftTestCase(
+                                                                                        testCase.id,
+                                                                                        "input",
+                                                                                        event.target.value,
+                                                                                    )
+                                                                                }
+                                                                                className="min-h-16"
+                                                                            />
+                                                                            <Textarea
+                                                                                placeholder="Expected output"
+                                                                                value={
+                                                                                    testCase.expectedOutput
+                                                                                }
+                                                                                onChange={(event) =>
+                                                                                    updateAssignmentDraftTestCase(
+                                                                                        testCase.id,
+                                                                                        "expectedOutput",
+                                                                                        event.target.value,
+                                                                                    )
+                                                                                }
+                                                                                className="min-h-20"
+                                                                            />
+                                                                        </div>
+                                                                    ) : null}
+                                                                </div>
+                                                            );
+                                                        },
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </section>
+                                    )}
+
+                                    <DialogFooter className="border-t border-zinc-800 pt-3 sm:flex-wrap">
+                                        {activeAssignmentModalTab === "details" ? (
                                             <>
-                                                <LoaderCircle className="size-4 animate-spin" />
-                                                Saving
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    onClick={() =>
+                                                        setActiveAssignmentId(null)
+                                                    }
+                                                >
+                                                    Cancel
+                                                </Button>
+                                                <Button
+                                                    type="button"
+                                                    disabled={
+                                                        !assignmentDraft.title.trim()
+                                                    }
+                                                    className="bg-zinc-100 text-zinc-900 hover:bg-zinc-200"
+                                                    onClick={(event) => {
+                                                        event.preventDefault();
+                                                        event.stopPropagation();
+                                                        setActiveAssignmentModalTab(
+                                                            "checks",
+                                                        );
+                                                    }}
+                                                >
+                                                    Continue to checks
+                                                    <ArrowRight className="size-4" />
+                                                </Button>
                                             </>
                                         ) : (
                                             <>
-                                                <Save className="size-4" />
-                                                Save assignment
+                                                <p className="mr-auto text-xs text-zinc-500 sm:max-w-[160px]">
+                                                    {hasAssignmentDraftChanges
+                                                        ? "Unsaved changes"
+                                                        : "No changes to save"}
+                                                </p>
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    onClick={(event) => {
+                                                        event.preventDefault();
+                                                        event.stopPropagation();
+                                                        setActiveAssignmentModalTab(
+                                                            "details",
+                                                        );
+                                                    }}
+                                                >
+                                                    Back to details
+                                                </Button>
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    className="border-red-400/40 text-red-200 hover:bg-red-500/10"
+                                                    disabled={
+                                                        isSaving ||
+                                                        isDeletingAssignment
+                                                    }
+                                                    onClick={() =>
+                                                        setAssignmentDeletionCandidateId(
+                                                            activeAssignment.id,
+                                                        )
+                                                    }
+                                                >
+                                                    Delete assignment
+                                                </Button>
+                                                <Button
+                                                    type="submit"
+                                                    disabled={
+                                                        isSaving ||
+                                                        !assignmentDraft.title.trim() ||
+                                                        !hasAssignmentDraftChanges
+                                                    }
+                                                    className="bg-zinc-100 text-zinc-900 hover:bg-zinc-200"
+                                                >
+                                                    {isSaving ? (
+                                                        <>
+                                                            <LoaderCircle className="size-4 animate-spin" />
+                                                            Saving
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <Save className="size-4" />
+                                                            Save assignment
+                                                        </>
+                                                    )}
+                                                </Button>
                                             </>
                                         )}
-                                    </Button>
-                                </DialogFooter>
-                            </form>
-
-                            <div className="rounded border border-zinc-800">
-                                <div className="grid grid-cols-[1fr_auto] border-b border-zinc-800 bg-zinc-950/50 px-3 py-2 text-xs text-zinc-500">
-                                    <span>Student</span>
-                                    <span>Environment</span>
-                                </div>
-                                {activeAssignment.environments.length === 0 ? (
-                                    <p className="px-3 py-3 text-sm text-zinc-400">
-                                        No student environments linked.
-                                    </p>
-                                ) : (
-                                    activeAssignment.environments.map((entry) => (
-                                        <div
-                                            key={entry.assignmentEnvironmentId}
-                                            className="grid grid-cols-[1fr_auto] items-center gap-3 border-b border-zinc-800 px-3 py-2 last:border-b-0"
-                                        >
-                                            <span className="text-sm text-zinc-200">
-                                                {entry.studentUsername}
-                                            </span>
-                                            <div className="flex items-center gap-2">
-                                                <Button asChild size="sm" variant="outline">
-                                                    <Link
-                                                        href={buildFollowEnvironmentHref(
-                                                            entry.environmentId,
-                                                            entry.studentId,
-                                                        )}
-                                                    >
-                                                        <LocateFixed className="size-4" />
-                                                        Follow live
-                                                    </Link>
-                                                </Button>
-                                                <Button asChild size="sm" variant="outline">
-                                                    <Link
-                                                        href={`/environment/${entry.environmentId}`}
-                                                    >
-                                                        Open
-                                                        <ArrowRight className="size-4" />
-                                                    </Link>
-                                                </Button>
-                                            </div>
-                                        </div>
-                                    ))
-                                )}
-                            </div>
+                                    </DialogFooter>
+                                </form>
+                            )}
                         </>
                     )}
                 </DialogContent>

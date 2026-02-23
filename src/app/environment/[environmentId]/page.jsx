@@ -18,6 +18,7 @@ import {
     SquareTerminal,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import {
     Dialog,
     DialogContent,
@@ -30,8 +31,22 @@ import {
     ApiError,
     EnvironmentApiClient,
 } from "@/lib/environments/EnvironmentApiClient";
+import { ClassroomApiClient } from "@/lib/classroom/ClassroomApiClient";
 
 const environmentApiClient = new EnvironmentApiClient();
+const classroomApiClient = new ClassroomApiClient();
+const ACCESSIBILITY_STORAGE_KEY = "environment:accessibility:v1";
+const VIRTUAL_INSTRUCTIONS_FILE_ID = "__virtual_assignment_instructions__";
+const DEFAULT_ACCESSIBILITY = {
+    fontSize: "md",
+    highContrast: false,
+    reduceMotion: false,
+    readableFont: false,
+};
+
+function isInstructionsFile(fileName) {
+    return (fileName || "").toLowerCase() === "instructions.md";
+}
 
 export default function EnvironmentPage() {
     const params = useParams();
@@ -51,6 +66,35 @@ export default function EnvironmentPage() {
     const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
     const [isResettingTemplate, setIsResettingTemplate] = useState(false);
     const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
+    const [isRunningTests, setIsRunningTests] = useState(false);
+    const [isHelpDialogOpen, setIsHelpDialogOpen] = useState(false);
+    const [helpMessage, setHelpMessage] = useState("");
+    const [isSendingHelp, setIsSendingHelp] = useState(false);
+    const [isAccessibilityOpen, setIsAccessibilityOpen] = useState(false);
+    const [accessibility, setAccessibility] = useState(() => {
+        if (typeof window === "undefined") {
+            return DEFAULT_ACCESSIBILITY;
+        }
+
+        try {
+            const raw = window.localStorage.getItem(ACCESSIBILITY_STORAGE_KEY);
+            if (!raw) {
+                return DEFAULT_ACCESSIBILITY;
+            }
+
+            const parsed = JSON.parse(raw);
+            return {
+                fontSize: ["sm", "md", "lg"].includes(parsed?.fontSize)
+                    ? parsed.fontSize
+                    : DEFAULT_ACCESSIBILITY.fontSize,
+                highContrast: Boolean(parsed?.highContrast),
+                reduceMotion: Boolean(parsed?.reduceMotion),
+                readableFont: Boolean(parsed?.readableFont),
+            };
+        } catch {
+            return DEFAULT_ACCESSIBILITY;
+        }
+    });
     const [followStudentId, setFollowStudentId] = useState(() => {
         const value = searchParams.get("followStudent");
         return value ? value.trim() : "";
@@ -61,6 +105,10 @@ export default function EnvironmentPage() {
     const isReadOnlyEnvironment = Boolean(
         environment?.permissions?.readOnlyEnvironment,
     );
+    const isAssignmentEnvironment = Boolean(
+        environment?.access?.isAssignmentEnvironment,
+    );
+    const isStudentViewer = environment?.access?.viewerRole === "student";
 
     const shortEnvironmentId = useMemo(() => {
         if (!environmentId) {
@@ -105,6 +153,19 @@ export default function EnvironmentPage() {
 
         return `/classroom?classId=${encodeURIComponent(classId)}`;
     }, [environment?.access?.classId]);
+    const assignmentTestCases = useMemo(() => {
+        const cases = environment?.access?.testCases;
+        return Array.isArray(cases) ? cases : [];
+    }, [environment?.access?.testCases]);
+    const canRequestHelp = Boolean(
+        isAssignmentEnvironment && isStudentViewer && environment?.access?.assignmentId,
+    );
+    const fontSizePx =
+        accessibility.fontSize === "sm"
+            ? 13
+            : accessibility.fontSize === "lg"
+              ? 17
+              : 15;
 
     const syncInfo = useMemo(() => {
         const sync = environment?.sync || {};
@@ -151,9 +212,6 @@ export default function EnvironmentPage() {
     }, [clockTick, environment?.sync, isReady]);
 
     const canResetToTemplate = Boolean(environment?.access?.canResetToTemplate);
-    const isAssignmentEnvironment = Boolean(
-        environment?.access?.isAssignmentEnvironment,
-    );
     const commandActions = [
         {
             id: "run",
@@ -182,6 +240,24 @@ export default function EnvironmentPage() {
             shortcut: "Cmd/Ctrl + Shift + C",
             disabled: false,
             action: () => setShowConsole((prev) => !prev),
+        },
+        ...(assignmentTestCases.length > 0
+            ? [
+                  {
+                      id: "run-tests",
+                      label: "Run assignment tests",
+                      shortcut: "Cmd/Ctrl + Shift + T",
+                      disabled: isRunningTests || isMetaLoading,
+                      action: () => handleRunAssignmentTests(),
+                  },
+              ]
+            : []),
+        {
+            id: "accessibility",
+            label: "Accessibility settings",
+            shortcut: "Cmd/Ctrl + Shift + A",
+            disabled: false,
+            action: () => setIsAccessibilityOpen(true),
         },
         ...(isAssignmentEnvironment
             ? [
@@ -255,6 +331,62 @@ export default function EnvironmentPage() {
             setInfoMessage("Share URL copied to clipboard.");
         } catch {
             setInfoMessage("Could not copy URL from this browser context.");
+        }
+    }
+
+    async function handleRunAssignmentTests() {
+        if (!environmentId || !assignmentTestCases.length) {
+            return;
+        }
+
+        setIsRunningTests(true);
+        setMetadataError("");
+        setInfoMessage("");
+
+        try {
+            const payload = await environmentApiClient.runAssignmentTests(
+                environmentId,
+                {
+                    files: Array.isArray(environment?.files) ? environment.files : [],
+                },
+            );
+            const summary = payload?.summary || {};
+            setInfoMessage(
+                `Tests complete: ${summary.passed || 0}/${summary.total || 0} passed.`,
+            );
+        } catch (error) {
+            setMetadataError(error?.message || "Could not run assignment tests.");
+        } finally {
+            setIsRunningTests(false);
+        }
+    }
+
+    async function handleSubmitHelpRequest() {
+        if (!canRequestHelp || !environmentId) {
+            return;
+        }
+
+        setIsSendingHelp(true);
+        setMetadataError("");
+        setInfoMessage("");
+
+        try {
+            const payload = await classroomApiClient.requestHelp({
+                environmentId,
+                message: helpMessage,
+            });
+            const alreadyOpen = Boolean(payload?.alreadyOpen);
+            setIsHelpDialogOpen(false);
+            setHelpMessage("");
+            setInfoMessage(
+                alreadyOpen
+                    ? "Updated your open help request."
+                    : "Help request sent to your teacher.",
+            );
+        } catch (error) {
+            setMetadataError(error?.message || "Could not send help request.");
+        } finally {
+            setIsSendingHelp(false);
         }
     }
 
@@ -395,6 +527,17 @@ export default function EnvironmentPage() {
     }, [environmentId]);
 
     useEffect(() => {
+        try {
+            window.localStorage.setItem(
+                ACCESSIBILITY_STORAGE_KEY,
+                JSON.stringify(accessibility),
+            );
+        } catch {
+            // Ignore storage errors in restricted browser contexts.
+        }
+    }, [accessibility]);
+
+    useEffect(() => {
         const intervalId = setInterval(() => {
             setClockTick(Date.now());
         }, 1000);
@@ -466,6 +609,39 @@ export default function EnvironmentPage() {
     ]);
 
     useEffect(() => {
+        if (!isAssignmentEnvironment || !isStudentViewer) {
+            return;
+        }
+
+        setEnvironment((prev) => {
+            const files = Array.isArray(prev?.files) ? prev.files : [];
+            const hasInstructions = files.some((file) =>
+                isInstructionsFile(file?.name),
+            );
+
+            if (hasInstructions) {
+                return prev;
+            }
+
+            const syntheticInstructionsFile = {
+                id: VIRTUAL_INSTRUCTIONS_FILE_ID,
+                name: "INSTRUCTIONS.md",
+                content: "",
+                isVirtualInstructions: true,
+            };
+
+            const nextFiles = [...files, syntheticInstructionsFile];
+            const nextCurrentFile = prev.currentFile || VIRTUAL_INSTRUCTIONS_FILE_ID;
+
+            return {
+                ...prev,
+                files: nextFiles,
+                currentFile: nextCurrentFile,
+            };
+        });
+    }, [isAssignmentEnvironment, isStudentViewer, setEnvironment, environment?.files]);
+
+    useEffect(() => {
         if (!metadataError && !infoMessage) {
             return;
         }
@@ -510,6 +686,18 @@ export default function EnvironmentPage() {
                 return;
             }
 
+            if (event.shiftKey && key === "t") {
+                event.preventDefault();
+                handleRunAssignmentTests();
+                return;
+            }
+
+            if (event.shiftKey && key === "a") {
+                event.preventDefault();
+                setIsAccessibilityOpen(true);
+                return;
+            }
+
             if (event.shiftKey && key === "r") {
                 event.preventDefault();
                 requestResetToTemplate();
@@ -529,7 +717,18 @@ export default function EnvironmentPage() {
     });
 
     return (
-        <div className="h-screen bg-zinc-950 text-zinc-100">
+        <div
+            className={cn(
+                "h-screen bg-zinc-950 text-zinc-100",
+                accessibility.highContrast ? "contrast-125" : "",
+                accessibility.reduceMotion ? "[&_*]:transition-none" : "",
+            )}
+            style={{
+                fontFamily: accessibility.readableFont
+                    ? "Verdana, Geneva, Tahoma, sans-serif"
+                    : undefined,
+            }}
+        >
             <main className="mx-auto flex h-full w-full max-w-[1680px] flex-col px-3 py-3 md:px-4">
                 <header className="mb-3 rounded-lg border border-zinc-800 bg-zinc-900">
                     <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 md:px-4">
@@ -604,6 +803,44 @@ export default function EnvironmentPage() {
                                 <SquareTerminal className="size-4" />
                                 {showConsole ? "Hide console" : "Show console"}
                             </Button>
+                            <Button
+                                onClick={() => setIsAccessibilityOpen(true)}
+                                size="sm"
+                                variant="outline"
+                                className="h-8"
+                            >
+                                Accessibility
+                            </Button>
+                            {assignmentTestCases.length > 0 ? (
+                                <Button
+                                    onClick={handleRunAssignmentTests}
+                                    disabled={isRunningTests}
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-8"
+                                >
+                                    {isRunningTests ? (
+                                        <LoaderCircle
+                                            className={`size-4 ${
+                                                accessibility.reduceMotion
+                                                    ? ""
+                                                    : "animate-spin"
+                                            }`}
+                                        />
+                                    ) : null}
+                                    Run tests
+                                </Button>
+                            ) : null}
+                            {canRequestHelp ? (
+                                <Button
+                                    onClick={() => setIsHelpDialogOpen(true)}
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-8"
+                                >
+                                    Need help
+                                </Button>
+                            ) : null}
                             {isAssignmentEnvironment ? (
                                 <Button
                                     onClick={requestResetToTemplate}
@@ -616,7 +853,13 @@ export default function EnvironmentPage() {
                                     className="h-8"
                                 >
                                     {isResettingTemplate ? (
-                                        <LoaderCircle className="size-4 animate-spin" />
+                                        <LoaderCircle
+                                            className={`size-4 ${
+                                                accessibility.reduceMotion
+                                                    ? ""
+                                                    : "animate-spin"
+                                            }`}
+                                        />
                                     ) : (
                                         <RotateCcw className="size-4" />
                                     )}
@@ -636,7 +879,13 @@ export default function EnvironmentPage() {
                             >
                                 {isRunning ? (
                                     <>
-                                        <LoaderCircle className="size-4 animate-spin" />
+                                        <LoaderCircle
+                                            className={`size-4 ${
+                                                accessibility.reduceMotion
+                                                    ? ""
+                                                    : "animate-spin"
+                                            }`}
+                                        />
                                         Running
                                     </>
                                 ) : (
@@ -699,45 +948,59 @@ export default function EnvironmentPage() {
                 </header>
 
                 {isReady ? (
-                    <div
-                        className={cn(
-                            "min-h-0 flex-1 gap-3",
-                            isFocusMode
-                                ? "grid grid-cols-1"
-                                : "grid lg:grid-cols-[260px_minmax(0,1fr)]",
-                        )}
-                    >
-                        {!isFocusMode && (
-                            <aside className="min-h-0 overflow-auto rounded-lg border border-zinc-800 bg-zinc-900 p-3">
-                                <div className="mb-3 flex items-center justify-between text-xs text-zinc-500">
-                                    <span>Files</span>
-                                    <span>
-                                        {environment?.files?.length || 0}
-                                    </span>
-                                </div>
-                                <FileManager />
-                            </aside>
-                        )}
+                    <div className="flex min-h-0 flex-1 flex-col gap-3">
+                        <div
+                            className={cn(
+                                "min-h-0 flex-1 gap-3",
+                                isFocusMode
+                                    ? "grid grid-cols-1"
+                                    : "grid lg:grid-cols-[260px_minmax(0,1fr)]",
+                            )}
+                        >
+                            {!isFocusMode && (
+                                <aside className="min-h-0 overflow-auto rounded-lg border border-zinc-800 bg-zinc-900 p-3">
+                                    <div className="mb-3 flex items-center justify-between text-xs text-zinc-500">
+                                        <span>Files</span>
+                                        <span>
+                                            {environment?.files?.length || 0}
+                                        </span>
+                                    </div>
+                                    <FileManager />
+                                </aside>
+                            )}
 
-                        <section className="min-h-0 overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900">
-                            <div className="grid h-full grid-cols-8 grid-rows-12">
-                                <FileViewer
-                                    className={
-                                        showConsole
-                                            ? "col-span-8 row-span-7"
-                                            : "col-span-8 row-span-12"
-                                    }
-                                />
-                                {showConsole && (
-                                    <Console className="col-span-8 row-span-5" />
-                                )}
-                            </div>
-                        </section>
+                            <section className="min-h-0 overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900">
+                                <div className="grid h-full grid-cols-8 grid-rows-12">
+                                    <FileViewer
+                                        className={
+                                            showConsole
+                                                ? "col-span-8 row-span-7"
+                                                : "col-span-8 row-span-12"
+                                        }
+                                        editorFontSize={fontSizePx}
+                                        highContrast={accessibility.highContrast}
+                                        reducedMotion={accessibility.reduceMotion}
+                                    />
+                                    {showConsole && (
+                                        <Console
+                                            className="col-span-8 row-span-5"
+                                            fontSize={fontSizePx}
+                                            highContrast={accessibility.highContrast}
+                                            reducedMotion={accessibility.reduceMotion}
+                                        />
+                                    )}
+                                </div>
+                            </section>
+                        </div>
                     </div>
                 ) : (
                     <div className="flex flex-1 items-center justify-center">
                         <div className="rounded-lg border border-zinc-800 bg-zinc-900 px-8 py-10 text-center">
-                            <LoaderCircle className="mx-auto size-7 animate-spin text-zinc-300" />
+                            <LoaderCircle
+                                className={`mx-auto size-7 text-zinc-300 ${
+                                    accessibility.reduceMotion ? "" : "animate-spin"
+                                }`}
+                            />
                             <p className="mt-3 text-sm text-zinc-300">
                                 Connecting to {displayedName}...
                             </p>
@@ -814,12 +1077,164 @@ export default function EnvironmentPage() {
                             >
                                 {isResettingTemplate ? (
                                     <>
-                                        <LoaderCircle className="size-4 animate-spin" />
+                                        <LoaderCircle
+                                            className={`size-4 ${
+                                                accessibility.reduceMotion
+                                                    ? ""
+                                                    : "animate-spin"
+                                            }`}
+                                        />
                                         Resetting
                                     </>
                                 ) : (
                                     "Reset"
                                 )}
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+
+                <Dialog
+                    open={isHelpDialogOpen}
+                    onOpenChange={(open) => {
+                        if (!isSendingHelp) {
+                            setIsHelpDialogOpen(open);
+                        }
+                    }}
+                >
+                    <DialogContent className="max-w-md">
+                        <DialogHeader>
+                            <DialogTitle>Request teacher help</DialogTitle>
+                            <DialogDescription>
+                                Send a short message to your teacher. They can follow your environment live.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <Textarea
+                            placeholder="What are you stuck on? (optional)"
+                            value={helpMessage}
+                            onChange={(event) => setHelpMessage(event.target.value)}
+                            maxLength={1000}
+                            className="min-h-28"
+                        />
+                        <DialogFooter>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                disabled={isSendingHelp}
+                                onClick={() => setIsHelpDialogOpen(false)}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                type="button"
+                                disabled={isSendingHelp}
+                                className="bg-zinc-100 text-zinc-900 hover:bg-zinc-200"
+                                onClick={handleSubmitHelpRequest}
+                            >
+                                {isSendingHelp ? (
+                                    <>
+                                        <LoaderCircle
+                                            className={`size-4 ${
+                                                accessibility.reduceMotion
+                                                    ? ""
+                                                    : "animate-spin"
+                                            }`}
+                                        />
+                                        Sending
+                                    </>
+                                ) : (
+                                    "Send help request"
+                                )}
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+
+                <Dialog
+                    open={isAccessibilityOpen}
+                    onOpenChange={setIsAccessibilityOpen}
+                >
+                    <DialogContent className="max-w-md">
+                        <DialogHeader>
+                            <DialogTitle>Accessibility settings</DialogTitle>
+                            <DialogDescription>
+                                Adjust the editor and console for readability.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-3 text-sm">
+                            <div>
+                                <label className="mb-1 block text-xs text-zinc-400">
+                                    Font size
+                                </label>
+                                <select
+                                    value={accessibility.fontSize}
+                                    onChange={(event) =>
+                                        setAccessibility((previous) => ({
+                                            ...previous,
+                                            fontSize: event.target.value,
+                                        }))
+                                    }
+                                    className="h-9 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100"
+                                >
+                                    <option value="sm">Small</option>
+                                    <option value="md">Medium</option>
+                                    <option value="lg">Large</option>
+                                </select>
+                            </div>
+                            <label className="flex items-center justify-between rounded border border-zinc-800 px-3 py-2 text-sm text-zinc-300">
+                                High contrast
+                                <input
+                                    type="checkbox"
+                                    checked={accessibility.highContrast}
+                                    onChange={(event) =>
+                                        setAccessibility((previous) => ({
+                                            ...previous,
+                                            highContrast: event.target.checked,
+                                        }))
+                                    }
+                                />
+                            </label>
+                            <label className="flex items-center justify-between rounded border border-zinc-800 px-3 py-2 text-sm text-zinc-300">
+                                Reduce motion
+                                <input
+                                    type="checkbox"
+                                    checked={accessibility.reduceMotion}
+                                    onChange={(event) =>
+                                        setAccessibility((previous) => ({
+                                            ...previous,
+                                            reduceMotion: event.target.checked,
+                                        }))
+                                    }
+                                />
+                            </label>
+                            <label className="flex items-center justify-between rounded border border-zinc-800 px-3 py-2 text-sm text-zinc-300">
+                                Readable interface font
+                                <input
+                                    type="checkbox"
+                                    checked={accessibility.readableFont}
+                                    onChange={(event) =>
+                                        setAccessibility((previous) => ({
+                                            ...previous,
+                                            readableFont: event.target.checked,
+                                        }))
+                                    }
+                                />
+                            </label>
+                        </div>
+                        <DialogFooter>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => setAccessibility(DEFAULT_ACCESSIBILITY)}
+                            >
+                                Reset defaults
+                            </Button>
+                            <Button
+                                type="button"
+                                className="bg-zinc-100 text-zinc-900 hover:bg-zinc-200"
+                                onClick={() => setIsAccessibilityOpen(false)}
+                            >
+                                Done
                             </Button>
                         </DialogFooter>
                     </DialogContent>

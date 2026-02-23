@@ -270,6 +270,8 @@ export class ClassroomRepository {
             description = null,
             dueAt = null,
             templateEnvironmentId = null,
+            testCasesJson = [],
+            checklistJson = {},
         },
         executor = this.database,
     ) {
@@ -283,10 +285,12 @@ export class ClassroomRepository {
                     description,
                     due_at,
                     template_environment_id,
+                    test_cases_json,
+                    checklist_json,
                     created_at,
                     updated_at
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
                 RETURNING
                     id,
                     class_id,
@@ -295,6 +299,8 @@ export class ClassroomRepository {
                     description,
                     due_at,
                     template_environment_id,
+                    test_cases_json,
+                    checklist_json,
                     created_at,
                     updated_at
             `,
@@ -306,6 +312,8 @@ export class ClassroomRepository {
                 description,
                 dueAt,
                 templateEnvironmentId,
+                JSON.stringify(testCasesJson || []),
+                JSON.stringify(checklistJson || {}),
             ],
         );
 
@@ -332,7 +340,15 @@ export class ClassroomRepository {
     }
 
     async updateAssignment(
-        { assignmentId, teacherId, title, description, dueAt },
+        {
+            assignmentId,
+            teacherId,
+            title,
+            description,
+            dueAt,
+            testCasesJson = [],
+            checklistJson = {},
+        },
         executor = this.database,
     ) {
         const result = await executor.query(
@@ -342,6 +358,8 @@ export class ClassroomRepository {
                     title = $3,
                     description = $4,
                     due_at = $5,
+                    test_cases_json = $6,
+                    checklist_json = $7,
                     updated_at = NOW()
                 WHERE id = $1
                     AND teacher_id = $2
@@ -353,10 +371,20 @@ export class ClassroomRepository {
                     description,
                     due_at,
                     template_environment_id,
+                    test_cases_json,
+                    checklist_json,
                     created_at,
                     updated_at
             `,
-            [assignmentId, teacherId, title, description, dueAt],
+            [
+                assignmentId,
+                teacherId,
+                title,
+                description,
+                dueAt,
+                JSON.stringify(testCasesJson || []),
+                JSON.stringify(checklistJson || {}),
+            ],
         );
 
         return result.rows[0] || null;
@@ -373,7 +401,14 @@ export class ClassroomRepository {
                     id,
                     class_id,
                     teacher_id,
-                    title
+                    title,
+                    description,
+                    due_at,
+                    template_environment_id,
+                    test_cases_json,
+                    checklist_json,
+                    created_at,
+                    updated_at
                 FROM assignments
                 WHERE id = $1
                     AND teacher_id = $2
@@ -495,6 +530,8 @@ export class ClassroomRepository {
                     a.description,
                     a.due_at,
                     a.template_environment_id,
+                    a.test_cases_json,
+                    a.checklist_json,
                     te.name AS template_environment_name,
                     a.created_at,
                     a.updated_at,
@@ -533,6 +570,8 @@ export class ClassroomRepository {
                     a.description,
                     a.due_at,
                     a.template_environment_id,
+                    a.test_cases_json,
+                    a.checklist_json,
                     te.name AS template_environment_name,
                     a.created_at,
                     a.updated_at,
@@ -555,6 +594,220 @@ export class ClassroomRepository {
         );
 
         return result.rows;
+    }
+
+    async findStudentAssignmentEnvironment(
+        studentId,
+        environmentId,
+        executor = this.database,
+    ) {
+        const result = await executor.query(
+            `
+                SELECT
+                    ae.assignment_id,
+                    ae.environment_id,
+                    a.class_id,
+                    a.title AS assignment_title,
+                    c.name AS class_name
+                FROM assignment_environments AS ae
+                INNER JOIN assignments AS a
+                    ON a.id = ae.assignment_id
+                INNER JOIN classes AS c
+                    ON c.id = a.class_id
+                WHERE ae.student_id = $1
+                    AND ae.environment_id = $2
+                LIMIT 1
+            `,
+            [studentId, environmentId],
+        );
+
+        return result.rows[0] || null;
+    }
+
+    async findOpenHelpRequestForStudentEnvironment(
+        studentId,
+        environmentId,
+        executor = this.database,
+    ) {
+        const result = await executor.query(
+            `
+                SELECT
+                    id,
+                    class_id,
+                    assignment_id,
+                    student_id,
+                    environment_id,
+                    message,
+                    status,
+                    created_at,
+                    updated_at,
+                    resolved_at
+                FROM help_requests
+                WHERE student_id = $1
+                    AND environment_id = $2
+                    AND status = 'open'
+                LIMIT 1
+            `,
+            [studentId, environmentId],
+        );
+
+        return result.rows[0] || null;
+    }
+
+    async createHelpRequest(
+        {
+            id,
+            classId,
+            assignmentId = null,
+            studentId,
+            environmentId,
+            message = null,
+            status = "open",
+        },
+        executor = this.database,
+    ) {
+        const result = await executor.query(
+            `
+                INSERT INTO help_requests (
+                    id,
+                    class_id,
+                    assignment_id,
+                    student_id,
+                    environment_id,
+                    message,
+                    status,
+                    created_at,
+                    updated_at
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+                RETURNING
+                    id,
+                    class_id,
+                    assignment_id,
+                    student_id,
+                    environment_id,
+                    message,
+                    status,
+                    created_at,
+                    updated_at,
+                    resolved_at
+            `,
+            [
+                id,
+                classId,
+                assignmentId,
+                studentId,
+                environmentId,
+                message,
+                status,
+            ],
+        );
+
+        return result.rows[0] || null;
+    }
+
+    async updateHelpRequestMessage(
+        helpRequestId,
+        message,
+        executor = this.database,
+    ) {
+        const result = await executor.query(
+            `
+                UPDATE help_requests
+                SET
+                    message = $2,
+                    updated_at = NOW()
+                WHERE id = $1
+                RETURNING
+                    id,
+                    class_id,
+                    assignment_id,
+                    student_id,
+                    environment_id,
+                    message,
+                    status,
+                    created_at,
+                    updated_at,
+                    resolved_at
+            `,
+            [helpRequestId, message],
+        );
+
+        return result.rows[0] || null;
+    }
+
+    async listOpenHelpRequestsForTeacher(
+        teacherId,
+        classId = null,
+        executor = this.database,
+    ) {
+        const result = await executor.query(
+            `
+                SELECT
+                    hr.id,
+                    hr.class_id,
+                    hr.assignment_id,
+                    hr.student_id,
+                    hr.environment_id,
+                    hr.message,
+                    hr.status,
+                    hr.created_at,
+                    hr.updated_at,
+                    hr.resolved_at,
+                    u.username AS student_username,
+                    a.title AS assignment_title,
+                    c.name AS class_name
+                FROM help_requests AS hr
+                INNER JOIN classes AS c
+                    ON c.id = hr.class_id
+                INNER JOIN users AS u
+                    ON u.id = hr.student_id
+                LEFT JOIN assignments AS a
+                    ON a.id = hr.assignment_id
+                WHERE c.teacher_id = $1
+                    AND hr.status = 'open'
+                    AND ($2::text IS NULL OR hr.class_id = $2)
+                ORDER BY hr.created_at ASC
+            `,
+            [teacherId, classId],
+        );
+
+        return result.rows;
+    }
+
+    async resolveHelpRequestForTeacher(
+        helpRequestId,
+        teacherId,
+        executor = this.database,
+    ) {
+        const result = await executor.query(
+            `
+                UPDATE help_requests AS hr
+                SET
+                    status = 'resolved',
+                    updated_at = NOW(),
+                    resolved_at = NOW()
+                FROM classes AS c
+                WHERE hr.id = $1
+                    AND hr.status = 'open'
+                    AND c.id = hr.class_id
+                    AND c.teacher_id = $2
+                RETURNING
+                    hr.id,
+                    hr.class_id,
+                    hr.assignment_id,
+                    hr.student_id,
+                    hr.environment_id,
+                    hr.message,
+                    hr.status,
+                    hr.created_at,
+                    hr.updated_at,
+                    hr.resolved_at
+            `,
+            [helpRequestId, teacherId],
+        );
+
+        return result.rows[0] || null;
     }
 
     async canTeacherAccessEnvironment(
@@ -590,9 +843,15 @@ export class ClassroomRepository {
                 SELECT
                     ae.assignment_id,
                     ae.student_id,
+                    ae.environment_id,
                     a.class_id,
                     a.teacher_id,
-                    a.template_environment_id
+                    a.template_environment_id,
+                    a.title AS assignment_title,
+                    a.description AS assignment_description,
+                    a.due_at,
+                    a.test_cases_json,
+                    a.checklist_json
                 FROM assignment_environments AS ae
                 INNER JOIN assignments AS a
                     ON a.id = ae.assignment_id

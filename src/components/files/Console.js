@@ -15,7 +15,12 @@ function formatRunDuration(durationMs) {
     return `${(durationMs / 1000).toFixed(2)} s`;
 }
 
-export function Console({ className = "col-span-8 row-span-5" }) {
+export function Console({
+    className = "col-span-8 row-span-5",
+    fontSize = 14,
+    reducedMotion = false,
+    highContrast = false,
+}) {
     const { environment, setEnvironment } = useEnvironment();
     const outputRef = useRef(null);
     const inputRef = useRef(null);
@@ -102,15 +107,27 @@ export function Console({ className = "col-span-8 row-span-5" }) {
         }));
     };
 
+    const normalizedFontSize = Math.max(12, Number(fontSize) || 14);
+
     return (
-        <div className={cn("bg-black border-t-2 border-zinc-800 flex flex-col", className)}>
+        <div
+            className={cn(
+                "bg-black border-t-2 border-zinc-800 flex flex-col",
+                highContrast ? "contrast-125" : "",
+                className,
+            )}
+        >
             {/* Console Header */}
             <div className="bg-zinc-900 px-4 py-2 border-b border-zinc-800 flex items-center justify-between">
                 <span className="text-sm font-semibold text-zinc-300">
                     Console
                 </span>
                 {environment.isRunning && (
-                    <span className="text-xs text-green-500 animate-pulse">
+                    <span
+                        className={`text-xs text-green-500 ${
+                            reducedMotion ? "" : "animate-pulse"
+                        }`}
+                    >
                         ● Running
                     </span>
                 )}
@@ -158,6 +175,7 @@ export function Console({ className = "col-span-8 row-span-5" }) {
                 className="flex-1 overflow-y-auto p-4 font-mono text-sm text-zinc-300 whitespace-pre-wrap break-words"
                 style={{
                     fontFamily: "Menlo, Monaco, 'Courier New', monospace",
+                    fontSize: `${normalizedFontSize}px`,
                 }}
             >
                 {environment.console ||
@@ -187,6 +205,7 @@ export function Console({ className = "col-span-8 row-span-5" }) {
                     className="flex-1 bg-transparent px-2 py-3 text-zinc-400 font-mono outline-none disabled:text-zinc-600 disabled:cursor-not-allowed"
                     style={{
                         fontFamily: "Menlo, Monaco, 'Courier New', monospace",
+                        fontSize: `${normalizedFontSize}px`,
                     }}
                 />
             </form>

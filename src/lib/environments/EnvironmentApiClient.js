@@ -50,6 +50,14 @@ export class EnvironmentApiClient {
         );
     }
 
+    async runAssignmentTests(environmentId, payload) {
+        return this.sendRequest(
+            "POST",
+            payload,
+            `/${environmentId}/assignment-tests`,
+        );
+    }
+
     async sendRequest(method, body = null, path = "") {
         const response = await fetch(`${this.basePath}${path}`, {
             method,

@@ -28,6 +28,10 @@ function isInstructionsFile(fileName) {
     return (fileName || "").toLowerCase() === "instructions.md";
 }
 
+function isVirtualInstructionsFile(file) {
+    return Boolean(file?.isVirtualInstructions);
+}
+
 function getDisplayFileName(fileName, hideMarkdownSuffix = false) {
     if (!hideMarkdownSuffix) {
         return fileName;
@@ -114,6 +118,9 @@ export function FileManager() {
             ) {
                 return prev;
             }
+            if (isVirtualInstructionsFile(targetFile)) {
+                return prev;
+            }
 
             const updatedFiles = previousFiles.filter((f) => f.id !== fileId);
 
@@ -164,6 +171,9 @@ export function FileManager() {
             ) {
                 return prev;
             }
+            if (isVirtualInstructionsFile(targetFile)) {
+                return prev;
+            }
 
             const updatedFiles = previousFiles.map((f) =>
                 f.id === fileId ? { ...f, name: normalizedNewName } : f,
@@ -201,13 +211,6 @@ export function FileManager() {
 
     return (
         <div className="flex flex-col gap-2 font-light">
-            <NewFileDialog
-                newFileOpen={newFileOpen}
-                setNewFileOpen={setNewFileOpen}
-                createFile={createFile}
-                disabled={isEnvironmentReadOnly}
-            />
-
             {pinnedInstructionsFile ? (
                 <ContextMenu key={pinnedInstructionsFile.id}>
                     <ContextMenuTrigger>
@@ -233,6 +236,10 @@ export function FileManager() {
                             <ContextMenuItem disabled>
                                 Locked in assignment
                             </ContextMenuItem>
+                        ) : isVirtualInstructionsFile(pinnedInstructionsFile) ? (
+                            <ContextMenuItem disabled>
+                                Locked in assignment
+                            </ContextMenuItem>
                         ) : isEnvironmentReadOnly ? (
                             <ContextMenuItem disabled>
                                 View-only environment
@@ -253,7 +260,16 @@ export function FileManager() {
                 </ContextMenu>
             ) : null}
 
-            <div className="w-full my-3 h-[1px] bg-zinc-700"></div>
+            {pinnedInstructionsFile ? (
+                <div className="w-full my-3 h-[1px] bg-zinc-700"></div>
+            ) : null}
+
+            <NewFileDialog
+                newFileOpen={newFileOpen}
+                setNewFileOpen={setNewFileOpen}
+                createFile={createFile}
+                disabled={isEnvironmentReadOnly}
+            />
 
             {listedFiles.map((file) => (
                 <ContextMenu key={file.id}>
@@ -278,6 +294,10 @@ export function FileManager() {
                     <ContextMenuContent>
                         {isReadOnlyInstructions &&
                         isInstructionsFile(file.name) ? (
+                            <ContextMenuItem disabled>
+                                Locked in assignment
+                            </ContextMenuItem>
+                        ) : isVirtualInstructionsFile(file) ? (
                             <ContextMenuItem disabled>
                                 Locked in assignment
                             </ContextMenuItem>

@@ -61,6 +61,24 @@ export class ClassroomApiClient {
         return this.sendRequest("DELETE", `${this.basePath}/classes/${classId}`);
     }
 
+    async getHelpQueue(classId = null) {
+        const query = classId
+            ? `?classId=${encodeURIComponent(classId)}`
+            : "";
+        return this.sendRequest("GET", `${this.basePath}/help${query}`);
+    }
+
+    async requestHelp(payload) {
+        return this.sendRequest("POST", `${this.basePath}/help`, payload);
+    }
+
+    async resolveHelpRequest(helpRequestId) {
+        return this.sendRequest(
+            "PATCH",
+            `${this.basePath}/help/${helpRequestId}`,
+        );
+    }
+
     async sendRequest(method, url, body = null) {
         const response = await fetch(url, {
             method,
