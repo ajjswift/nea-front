@@ -6,6 +6,11 @@ import {
     EnvironmentService,
     ValidationError,
 } from "@/lib/environments/EnvironmentService";
+import {
+    frontendCacheInvalidator,
+    frontendCacheKeys,
+    frontendCacheService,
+} from "@/lib/cache/FrontendCache";
 
 const sessionService = new SessionService(db);
 const environmentRepository = new EnvironmentRepository(db);
@@ -41,16 +46,29 @@ export async function GET(request) {
             return unauthorizedResponse();
         }
 
-        const environments = await environmentService.listForUser(user.userId);
-        return NextResponse.json(
-            {
-                user: {
-                    id: user.userId,
-                    username: user.username,
-                    role: user.role || "student",
-                },
-                environments: environments.map((environment) => environment.toJSON()),
+        const payload = await frontendCacheService.getOrSetJson(
+            frontendCacheKeys.environmentList(user.userId),
+            async () => {
+                const environments = await environmentService.listForUser(
+                    user.userId,
+                );
+
+                return {
+                    user: {
+                        id: user.userId,
+                        username: user.username,
+                        role: user.role || "student",
+                    },
+                    environments: environments.map((environment) =>
+                        environment.toJSON(),
+                    ),
+                };
             },
+            30,
+        );
+
+        return NextResponse.json(
+            payload,
             { status: 200 },
         );
     } catch (error) {
@@ -86,6 +104,7 @@ export async function POST(request) {
             user.userId,
             body,
         );
+        await frontendCacheInvalidator.invalidateEnvironmentForUser(user.userId);
 
         return NextResponse.json(
             {

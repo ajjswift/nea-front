@@ -8,6 +8,11 @@ import {
     ClassroomService,
     ClassroomValidationError,
 } from "@/lib/classroom/ClassroomService";
+import {
+    frontendCacheInvalidator,
+    frontendCacheKeys,
+    frontendCacheService,
+} from "@/lib/cache/FrontendCache";
 
 const sessionService = new SessionService(db);
 const classroomRepository = new ClassroomRepository(db);
@@ -79,9 +84,11 @@ export async function GET(request, { params }) {
             throw new ClassroomNotFoundError("Class not found.");
         }
 
-        const assignmentRows = await classroomRepository.listAssignmentsForClass(
-            classId,
-            user.userId,
+        const assignmentRows = await frontendCacheService.getOrSetJson(
+            frontendCacheKeys.classAssignments(user.userId, classId),
+            async () =>
+                classroomRepository.listAssignmentsForClass(classId, user.userId),
+            20,
         );
         const assignments = classroomService.mapAssignments(assignmentRows);
 
@@ -117,6 +124,7 @@ export async function POST(request, { params }) {
             classId,
             body,
         );
+        await frontendCacheInvalidator.invalidateAfterClassroomMutation();
 
         return NextResponse.json({ assignment }, { status: 201 });
     } catch (error) {

@@ -8,6 +8,11 @@ import {
     ClassroomService,
     ClassroomValidationError,
 } from "@/lib/classroom/ClassroomService";
+import {
+    frontendCacheInvalidator,
+    frontendCacheKeys,
+    frontendCacheService,
+} from "@/lib/cache/FrontendCache";
 
 const sessionService = new SessionService(db);
 const classroomRepository = new ClassroomRepository(db);
@@ -79,9 +84,10 @@ export async function GET(request, { params }) {
             throw new ClassroomNotFoundError("Class not found.");
         }
 
-        const students = await classroomRepository.listClassStudents(
-            classId,
-            user.userId,
+        const students = await frontendCacheService.getOrSetJson(
+            frontendCacheKeys.classStudents(user.userId, classId),
+            async () => classroomRepository.listClassStudents(classId, user.userId),
+            20,
         );
 
         return NextResponse.json(
@@ -126,6 +132,7 @@ export async function PUT(request, { params }) {
             classId,
             body,
         );
+        await frontendCacheInvalidator.invalidateAfterClassroomMutation();
         return NextResponse.json({ students }, { status: 200 });
     } catch (error) {
         console.error("Failed to set class students:", error);

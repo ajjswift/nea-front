@@ -8,6 +8,7 @@ import {
     ClassroomService,
     ClassroomValidationError,
 } from "@/lib/classroom/ClassroomService";
+import { frontendCacheInvalidator } from "@/lib/cache/FrontendCache";
 
 const sessionService = new SessionService(db);
 const classroomRepository = new ClassroomRepository(db);
@@ -66,6 +67,7 @@ export async function POST(request) {
         }
 
         const joinedClass = await classroomService.joinClassByCode(user, body);
+        await frontendCacheInvalidator.invalidateAfterClassroomMutation();
         return NextResponse.json({ class: joinedClass }, { status: 200 });
     } catch (error) {
         console.error("Failed to join class:", error);

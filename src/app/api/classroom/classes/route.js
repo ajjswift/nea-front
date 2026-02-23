@@ -7,6 +7,11 @@ import {
     ClassroomService,
     ClassroomValidationError,
 } from "@/lib/classroom/ClassroomService";
+import {
+    frontendCacheInvalidator,
+    frontendCacheKeys,
+    frontendCacheService,
+} from "@/lib/cache/FrontendCache";
 
 const sessionService = new SessionService(db);
 const classroomRepository = new ClassroomRepository(db);
@@ -61,7 +66,11 @@ export async function GET(request) {
             return unauthorizedResponse();
         }
 
-        const classes = await classroomService.getTeacherDashboard(user);
+        const classes = await frontendCacheService.getOrSetJson(
+            frontendCacheKeys.teacherClasses(user.userId),
+            async () => classroomService.getTeacherDashboard(user),
+            20,
+        );
         return NextResponse.json({ classes }, { status: 200 });
     } catch (error) {
         console.error("Failed to list classes:", error);
@@ -87,6 +96,7 @@ export async function POST(request) {
             user,
             body,
         );
+        await frontendCacheInvalidator.invalidateAfterClassroomMutation();
         return NextResponse.json({ class: createdClass }, { status: 201 });
     } catch (error) {
         console.error("Failed to create class:", error);

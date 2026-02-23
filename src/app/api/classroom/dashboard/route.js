@@ -6,6 +6,10 @@ import {
     ClassroomAuthorizationError,
     ClassroomService,
 } from "@/lib/classroom/ClassroomService";
+import {
+    frontendCacheKeys,
+    frontendCacheService,
+} from "@/lib/cache/FrontendCache";
 
 const sessionService = new SessionService(db);
 const classroomRepository = new ClassroomRepository(db);
@@ -29,23 +33,28 @@ export async function GET(request) {
         }
 
         const dashboardRole = user.role === "teacher" ? "teacher" : "student";
-        const classes =
-            dashboardRole === "teacher"
-                ? await classroomService.getTeacherDashboard(user)
-                : await classroomService.getStudentDashboard(user);
+        const payload = await frontendCacheService.getOrSetJson(
+            frontendCacheKeys.classroomDashboard(dashboardRole, user.userId),
+            async () => {
+                const classes =
+                    dashboardRole === "teacher"
+                        ? await classroomService.getTeacherDashboard(user)
+                        : await classroomService.getStudentDashboard(user);
 
-        return NextResponse.json(
-            {
-                user: {
-                    id: user.userId,
-                    username: user.username,
+                return {
+                    user: {
+                        id: user.userId,
+                        username: user.username,
+                        role: dashboardRole,
+                    },
                     role: dashboardRole,
-                },
-                role: dashboardRole,
-                classes,
+                    classes,
+                };
             },
-            { status: 200 },
+            20,
         );
+
+        return NextResponse.json(payload, { status: 200 });
     } catch (error) {
         console.error("Failed to fetch classroom dashboard:", error);
 

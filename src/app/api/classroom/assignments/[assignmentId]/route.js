@@ -8,6 +8,7 @@ import {
     ClassroomService,
     ClassroomValidationError,
 } from "@/lib/classroom/ClassroomService";
+import { frontendCacheInvalidator } from "@/lib/cache/FrontendCache";
 
 const sessionService = new SessionService(db);
 const classroomRepository = new ClassroomRepository(db);
@@ -84,6 +85,7 @@ export async function PATCH(request, { params }) {
             assignmentId,
             body,
         );
+        await frontendCacheInvalidator.invalidateAfterClassroomMutation();
 
         return NextResponse.json({ assignment }, { status: 200 });
     } catch (error) {
@@ -112,6 +114,7 @@ export async function DELETE(request, { params }) {
             user,
             assignmentId,
         );
+        await frontendCacheInvalidator.invalidateAfterClassroomMutation();
 
         return NextResponse.json(
             {

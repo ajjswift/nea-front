@@ -5,6 +5,10 @@ import { EnvironmentRepository } from "@/lib/environments/EnvironmentRepository"
 import { EnvironmentService } from "@/lib/environments/EnvironmentService";
 import { ClassroomRepository } from "@/lib/classroom/ClassroomRepository";
 import { ClassroomService } from "@/lib/classroom/ClassroomService";
+import {
+    frontendCacheKeys,
+    frontendCacheService,
+} from "@/lib/cache/FrontendCache";
 
 const sessionService = new SessionService(db);
 const environmentRepository = new EnvironmentRepository(db);
@@ -58,6 +62,15 @@ export async function GET(request, { params }) {
             );
         }
 
+        const cacheKey = frontendCacheKeys.environmentDetail(
+            user.userId,
+            environmentId,
+        );
+        const cachedPayload = await frontendCacheService.getJson(cacheKey);
+        if (cachedPayload) {
+            return NextResponse.json(cachedPayload, { status: 200 });
+        }
+
         let environment = await environmentService.getForUser(
             user.userId,
             environmentId,
@@ -101,20 +114,20 @@ export async function GET(request, { params }) {
             user.role === "student" &&
             assignmentContext.student_id === user.userId;
 
-        return NextResponse.json(
-            {
-                environment: environment.toJSON(),
-                access: {
-                    viewerUserId: user.userId,
-                    viewerRole: user.role || "student",
-                    isAssignmentEnvironment,
-                    assignmentId: assignmentContext?.assignment_id || null,
-                    classId: assignmentContext?.class_id || null,
-                    instructionsReadOnly: Boolean(isAssignmentStudentOwner),
-                },
+        const payload = {
+            environment: environment.toJSON(),
+            access: {
+                viewerUserId: user.userId,
+                viewerRole: user.role || "student",
+                isAssignmentEnvironment,
+                assignmentId: assignmentContext?.assignment_id || null,
+                classId: assignmentContext?.class_id || null,
+                instructionsReadOnly: Boolean(isAssignmentStudentOwner),
             },
-            { status: 200 },
-        );
+        };
+
+        await frontendCacheService.setJson(cacheKey, payload, 20);
+        return NextResponse.json(payload, { status: 200 });
     } catch (error) {
         console.error("Failed to fetch environment by id:", error);
 

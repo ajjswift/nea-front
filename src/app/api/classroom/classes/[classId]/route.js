@@ -8,6 +8,7 @@ import {
     ClassroomService,
     ClassroomValidationError,
 } from "@/lib/classroom/ClassroomService";
+import { frontendCacheInvalidator } from "@/lib/cache/FrontendCache";
 
 const sessionService = new SessionService(db);
 const classroomRepository = new ClassroomRepository(db);
@@ -73,6 +74,7 @@ export async function DELETE(request, { params }) {
         }
 
         const deletedClass = await classroomService.deleteClass(user, classId);
+        await frontendCacheInvalidator.invalidateAfterClassroomMutation();
 
         return NextResponse.json(
             {
