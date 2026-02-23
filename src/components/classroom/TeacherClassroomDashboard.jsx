@@ -1140,7 +1140,8 @@ export default function TeacherClassroomDashboard() {
                                 Classroom
                             </h1>
                             <p className="mt-1 text-sm text-zinc-400">
-                                Manage classes, assignments, and student environments.
+                                Manage classes, assignments, and student
+                                environments.
                             </p>
                         </div>
                         {dashboard.user && (
@@ -1160,8 +1161,13 @@ export default function TeacherClassroomDashboard() {
                     <div className="grid gap-5 lg:grid-cols-[280px_minmax(0,1fr)]">
                         <aside className="space-y-4">
                             <section className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-                                <h2 className="text-sm font-medium">New class</h2>
-                                <form className="mt-3 space-y-3" onSubmit={handleCreateClass}>
+                                <h2 className="text-sm font-medium">
+                                    New class
+                                </h2>
+                                <form
+                                    className="mt-3 space-y-3"
+                                    onSubmit={handleCreateClass}
+                                >
                                     <Input
                                         placeholder="Class name"
                                         value={newClassName}
@@ -1174,7 +1180,9 @@ export default function TeacherClassroomDashboard() {
                                         placeholder="Description (optional)"
                                         value={newClassDescription}
                                         onChange={(event) =>
-                                            setNewClassDescription(event.target.value)
+                                            setNewClassDescription(
+                                                event.target.value,
+                                            )
                                         }
                                         maxLength={800}
                                     />
@@ -1203,17 +1211,23 @@ export default function TeacherClassroomDashboard() {
                                             <button
                                                 key={entry.id}
                                                 type="button"
-                                                onClick={() => setSelectedClassId(entry.id)}
+                                                onClick={() =>
+                                                    setSelectedClassId(entry.id)
+                                                }
                                                 className={`w-full px-4 py-3 text-left transition-colors ${
                                                     selectedClassId === entry.id
                                                         ? "bg-zinc-800/60"
                                                         : "hover:bg-zinc-800/30"
                                                 }`}
                                             >
-                                                <p className="text-sm font-medium">{entry.name}</p>
+                                                <p className="text-sm font-medium">
+                                                    {entry.name}
+                                                </p>
                                                 <p className="mt-1 text-xs text-zinc-500">
-                                                    {entry.students.length} students ·{" "}
-                                                    {entry.assignments.length} assignments
+                                                    {entry.students.length}{" "}
+                                                    students ·{" "}
+                                                    {entry.assignments.length}{" "}
+                                                    assignments
                                                 </p>
                                             </button>
                                         ))
@@ -1225,7 +1239,8 @@ export default function TeacherClassroomDashboard() {
                         <section className="space-y-4">
                             {!selectedClass ? (
                                 <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 text-sm text-zinc-400">
-                                    Select a class to manage students and assignments.
+                                    Select a class to manage students and
+                                    assignments.
                                 </div>
                             ) : (
                                 <>
@@ -1234,11 +1249,14 @@ export default function TeacherClassroomDashboard() {
                                             {selectedClass.name}
                                         </h2>
                                         <p className="mt-1 text-sm text-zinc-400">
-                                            {selectedClass.description || "No class description."}
+                                            {selectedClass.description ||
+                                                "No class description."}
                                         </p>
                                         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-zinc-400">
                                             <span className="rounded border border-zinc-700 px-2 py-1">
-                                                Join code: {selectedClass.joinCode || "Unavailable"}
+                                                Join code:{" "}
+                                                {selectedClass.joinCode ||
+                                                    "Unavailable"}
                                             </span>
                                             <Button
                                                 size="sm"
@@ -1271,13 +1289,21 @@ export default function TeacherClassroomDashboard() {
                                                     Class students
                                                 </h3>
                                                 <p className="mt-1 text-xs text-zinc-500">
-                                                    {selectedClass.students.length} enrolled · manage removals and linked environments in one place.
+                                                    {
+                                                        selectedClass.students
+                                                            .length
+                                                    }{" "}
+                                                    enrolled · manage removals
+                                                    and linked environments in
+                                                    one place.
                                                 </p>
                                             </div>
                                             <Button
                                                 size="sm"
                                                 variant="outline"
-                                                onClick={() => setIsStudentsModalOpen(true)}
+                                                onClick={() =>
+                                                    setIsStudentsModalOpen(true)
+                                                }
                                             >
                                                 <Users className="size-4" />
                                                 Manage students
@@ -1290,14 +1316,16 @@ export default function TeacherClassroomDashboard() {
                                             <div>
                                                 <h3 className="inline-flex items-center gap-1 text-sm font-medium">
                                                     <LifeBuoy className="size-4 text-zinc-400" />
-                                                    Office-hours help queue
+                                                    Help Queue
                                                 </h3>
                                                 <p className="mt-1 text-xs text-zinc-500">
-                                                    Open requests from students in this class.
+                                                    Open requests from students
+                                                    in this class.
                                                 </p>
                                             </div>
                                             <span className="rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-300">
-                                                {selectedClassHelpQueue.length} open
+                                                {selectedClassHelpQueue.length}{" "}
+                                                open
                                             </span>
                                         </div>
 
@@ -1307,70 +1335,75 @@ export default function TeacherClassroomDashboard() {
                                             </p>
                                         ) : (
                                             <div className="space-y-2">
-                                                {selectedClassHelpQueue.map((request) => (
-                                                    <div
-                                                        key={request.id}
-                                                        className="rounded border border-zinc-800 bg-zinc-950/50 p-3"
-                                                    >
-                                                        <div className="flex flex-wrap items-center justify-between gap-2">
-                                                            <div className="min-w-0">
-                                                                <p className="truncate text-sm font-medium text-zinc-100">
-                                                                    {request.studentUsername}
-                                                                </p>
-                                                                <p className="text-xs text-zinc-500">
-                                                                    {request.assignmentTitle ||
-                                                                        "Assignment"}{" "}
-                                                                    ·{" "}
-                                                                    {new Date(
-                                                                        request.createdAt,
-                                                                    ).toLocaleString()}
-                                                                </p>
-                                                            </div>
-                                                            <div className="flex items-center gap-2">
-                                                                <Button
-                                                                    asChild
-                                                                    size="sm"
-                                                                    variant="outline"
-                                                                    className="h-7 text-xs"
-                                                                >
-                                                                    <Link
-                                                                        href={buildFollowEnvironmentHref(
-                                                                            request.environmentId,
-                                                                            request.studentId,
-                                                                        )}
+                                                {selectedClassHelpQueue.map(
+                                                    (request) => (
+                                                        <div
+                                                            key={request.id}
+                                                            className="rounded border border-zinc-800 bg-zinc-950/50 p-3"
+                                                        >
+                                                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                                                <div className="min-w-0">
+                                                                    <p className="truncate text-sm font-medium text-zinc-100">
+                                                                        {
+                                                                            request.studentUsername
+                                                                        }
+                                                                    </p>
+                                                                    <p className="text-xs text-zinc-500">
+                                                                        {request.assignmentTitle ||
+                                                                            "Assignment"}{" "}
+                                                                        ·{" "}
+                                                                        {new Date(
+                                                                            request.createdAt,
+                                                                        ).toLocaleString()}
+                                                                    </p>
+                                                                </div>
+                                                                <div className="flex items-center gap-2">
+                                                                    <Button
+                                                                        asChild
+                                                                        size="sm"
+                                                                        variant="outline"
+                                                                        className="h-7 text-xs"
                                                                     >
-                                                                        Follow live
-                                                                    </Link>
-                                                                </Button>
-                                                                <Button
-                                                                    size="sm"
-                                                                    variant="outline"
-                                                                    className="h-7 border-emerald-400/50 text-emerald-200 hover:bg-emerald-500/10"
-                                                                    disabled={
-                                                                        resolvingHelpRequestId ===
-                                                                        request.id
-                                                                    }
-                                                                    onClick={() =>
-                                                                        handleResolveHelpRequest(
-                                                                            request.id,
-                                                                        )
-                                                                    }
-                                                                >
-                                                                    {resolvingHelpRequestId ===
-                                                                    request.id ? (
-                                                                        <LoaderCircle className="size-3.5 animate-spin" />
-                                                                    ) : (
-                                                                        "Resolve"
-                                                                    )}
-                                                                </Button>
+                                                                        <Link
+                                                                            href={buildFollowEnvironmentHref(
+                                                                                request.environmentId,
+                                                                                request.studentId,
+                                                                            )}
+                                                                        >
+                                                                            Follow
+                                                                            live
+                                                                        </Link>
+                                                                    </Button>
+                                                                    <Button
+                                                                        size="sm"
+                                                                        variant="outline"
+                                                                        className="h-7 border-emerald-400/50 text-emerald-200 hover:bg-emerald-500/10"
+                                                                        disabled={
+                                                                            resolvingHelpRequestId ===
+                                                                            request.id
+                                                                        }
+                                                                        onClick={() =>
+                                                                            handleResolveHelpRequest(
+                                                                                request.id,
+                                                                            )
+                                                                        }
+                                                                    >
+                                                                        {resolvingHelpRequestId ===
+                                                                        request.id ? (
+                                                                            <LoaderCircle className="size-3.5 animate-spin" />
+                                                                        ) : (
+                                                                            "Resolve"
+                                                                        )}
+                                                                    </Button>
+                                                                </div>
                                                             </div>
+                                                            <p className="mt-2 text-sm text-zinc-300">
+                                                                {request.message ||
+                                                                    "No message provided."}
+                                                            </p>
                                                         </div>
-                                                        <p className="mt-2 text-sm text-zinc-300">
-                                                            {request.message ||
-                                                                "No message provided."}
-                                                        </p>
-                                                    </div>
-                                                ))}
+                                                    ),
+                                                )}
                                             </div>
                                         )}
                                     </section>
@@ -1380,42 +1413,62 @@ export default function TeacherClassroomDashboard() {
                                             <span>Assignments</span>
                                             <Button
                                                 size="sm"
-                                                onClick={() => setIsCreateAssignmentOpen(true)}
+                                                onClick={() =>
+                                                    setIsCreateAssignmentOpen(
+                                                        true,
+                                                    )
+                                                }
                                                 className="bg-zinc-100 text-zinc-900 hover:bg-zinc-200"
                                             >
                                                 <Plus className="size-4" />
                                                 New assignment
                                             </Button>
                                         </div>
-                                        {selectedClass.assignments.length === 0 ? (
+                                        {selectedClass.assignments.length ===
+                                        0 ? (
                                             <p className="px-4 py-4 text-sm text-zinc-400">
                                                 No assignments yet.
                                             </p>
                                         ) : (
                                             <div className="divide-y divide-zinc-800">
-                                                {selectedClass.assignments.map((assignment) => (
-                                                    <button
-                                                        key={assignment.id}
-                                                        type="button"
-                                                        onClick={() =>
-                                                            setActiveAssignmentId(assignment.id)
-                                                        }
-                                                        className="w-full px-4 py-3 text-left transition-colors hover:bg-zinc-800/40"
-                                                    >
-                                                        <div className="flex items-start justify-between gap-3">
-                                                            <div className="min-w-0">
-                                                                <p className="truncate text-sm font-medium text-zinc-100">
-                                                                    {assignment.title}
-                                                                </p>
-                                                                <p className="mt-1 text-xs text-zinc-500">
-                                                                    {assignment.environments.length} student environments ·{" "}
-                                                                    {formatDueLabel(assignment.dueAt)}
-                                                                </p>
+                                                {selectedClass.assignments.map(
+                                                    (assignment) => (
+                                                        <button
+                                                            key={assignment.id}
+                                                            type="button"
+                                                            onClick={() =>
+                                                                setActiveAssignmentId(
+                                                                    assignment.id,
+                                                                )
+                                                            }
+                                                            className="w-full px-4 py-3 text-left transition-colors hover:bg-zinc-800/40"
+                                                        >
+                                                            <div className="flex items-start justify-between gap-3">
+                                                                <div className="min-w-0">
+                                                                    <p className="truncate text-sm font-medium text-zinc-100">
+                                                                        {
+                                                                            assignment.title
+                                                                        }
+                                                                    </p>
+                                                                    <p className="mt-1 text-xs text-zinc-500">
+                                                                        {
+                                                                            assignment
+                                                                                .environments
+                                                                                .length
+                                                                        }{" "}
+                                                                        student
+                                                                        environments
+                                                                        ·{" "}
+                                                                        {formatDueLabel(
+                                                                            assignment.dueAt,
+                                                                        )}
+                                                                    </p>
+                                                                </div>
+                                                                <ArrowRight className="mt-0.5 size-4 shrink-0 text-zinc-500" />
                                                             </div>
-                                                            <ArrowRight className="mt-0.5 size-4 shrink-0 text-zinc-500" />
-                                                        </div>
-                                                    </button>
-                                                ))}
+                                                        </button>
+                                                    ),
+                                                )}
                                             </div>
                                         )}
                                     </section>
@@ -1443,7 +1496,8 @@ export default function TeacherClassroomDashboard() {
                             <DialogHeader>
                                 <DialogTitle>Class students</DialogTitle>
                                 <DialogDescription>
-                                    Remove students or open any environment that belongs to this class.
+                                    Remove students or open any environment that
+                                    belongs to this class.
                                 </DialogDescription>
                             </DialogHeader>
 
@@ -1470,10 +1524,13 @@ export default function TeacherClassroomDashboard() {
                                                     size="sm"
                                                     variant="outline"
                                                     disabled={
-                                                        activeStudentActionId === student.id
+                                                        activeStudentActionId ===
+                                                        student.id
                                                     }
                                                     onClick={() =>
-                                                        setAssignmentViewerStudentId(student.id)
+                                                        setAssignmentViewerStudentId(
+                                                            student.id,
+                                                        )
                                                     }
                                                 >
                                                     View assignments
@@ -1482,13 +1539,17 @@ export default function TeacherClassroomDashboard() {
                                                     size="sm"
                                                     variant="outline"
                                                     disabled={
-                                                        activeStudentActionId === student.id
+                                                        activeStudentActionId ===
+                                                        student.id
                                                     }
                                                     onClick={() =>
-                                                        setRemovalCandidateStudentId(student.id)
+                                                        setRemovalCandidateStudentId(
+                                                            student.id,
+                                                        )
                                                     }
                                                 >
-                                                    {activeStudentActionId === student.id ? (
+                                                    {activeStudentActionId ===
+                                                    student.id ? (
                                                         <LoaderCircle className="size-4 animate-spin" />
                                                     ) : (
                                                         <UserMinus className="size-4" />
@@ -1518,10 +1579,12 @@ export default function TeacherClassroomDashboard() {
                         <>
                             <DialogHeader>
                                 <DialogTitle>
-                                    {assignmentViewerStudent.username} assignments
+                                    {assignmentViewerStudent.username}{" "}
+                                    assignments
                                 </DialogTitle>
                                 <DialogDescription>
-                                    Linked assignment environments for this student.
+                                    Linked assignment environments for this
+                                    student.
                                 </DialogDescription>
                             </DialogHeader>
 
@@ -1532,7 +1595,8 @@ export default function TeacherClassroomDashboard() {
                                 </div>
                                 {assignmentViewerItems.length === 0 ? (
                                     <p className="px-3 py-3 text-sm text-zinc-400">
-                                        No assignment environments for this student yet.
+                                        No assignment environments for this
+                                        student yet.
                                     </p>
                                 ) : (
                                     assignmentViewerItems.map((entry) => (
@@ -1544,7 +1608,11 @@ export default function TeacherClassroomDashboard() {
                                                 {entry.assignmentTitle}
                                             </span>
                                             <div className="flex items-center gap-2">
-                                                <Button asChild size="sm" variant="outline">
+                                                <Button
+                                                    asChild
+                                                    size="sm"
+                                                    variant="outline"
+                                                >
                                                     <Link
                                                         href={buildFollowEnvironmentHref(
                                                             entry.environmentId,
@@ -1555,7 +1623,11 @@ export default function TeacherClassroomDashboard() {
                                                         Follow live
                                                     </Link>
                                                 </Button>
-                                                <Button asChild size="sm" variant="outline">
+                                                <Button
+                                                    asChild
+                                                    size="sm"
+                                                    variant="outline"
+                                                >
                                                     <Link
                                                         href={`/environment/${entry.environmentId}`}
                                                     >
@@ -1587,7 +1659,10 @@ export default function TeacherClassroomDashboard() {
                             <DialogHeader>
                                 <DialogTitle>Remove student?</DialogTitle>
                                 <DialogDescription>
-                                    Remove <strong>{removalCandidateStudent.username}</strong>{" "}
+                                    Remove{" "}
+                                    <strong>
+                                        {removalCandidateStudent.username}
+                                    </strong>{" "}
                                     from this class?
                                 </DialogDescription>
                             </DialogHeader>
@@ -1595,7 +1670,9 @@ export default function TeacherClassroomDashboard() {
                                 <Button
                                     type="button"
                                     variant="outline"
-                                    onClick={() => setRemovalCandidateStudentId(null)}
+                                    onClick={() =>
+                                        setRemovalCandidateStudentId(null)
+                                    }
                                 >
                                     Cancel
                                 </Button>
@@ -1628,7 +1705,8 @@ export default function TeacherClassroomDashboard() {
                     <DialogHeader>
                         <DialogTitle>New assignment</DialogTitle>
                         <DialogDescription>
-                            Set core details first, then add checklist rules and test cases.
+                            Set core details first, then add checklist rules and
+                            test cases.
                         </DialogDescription>
                     </DialogHeader>
 
@@ -1654,7 +1732,10 @@ export default function TeacherClassroomDashboard() {
                         </div>
                     </div>
 
-                    <form className="space-y-4" onSubmit={handleCreateAssignment}>
+                    <form
+                        className="space-y-4"
+                        onSubmit={handleCreateAssignment}
+                    >
                         <div className="flex flex-wrap items-center gap-2 border-b border-zinc-800 pb-2">
                             <Button
                                 type="button"
@@ -1723,10 +1804,13 @@ export default function TeacherClassroomDashboard() {
                                                 placeholder="e.g. Variables and input challenge"
                                                 value={newAssignment.title}
                                                 onChange={(event) =>
-                                                    setNewAssignment((prev) => ({
-                                                        ...prev,
-                                                        title: event.target.value,
-                                                    }))
+                                                    setNewAssignment(
+                                                        (prev) => ({
+                                                            ...prev,
+                                                            title: event.target
+                                                                .value,
+                                                        }),
+                                                    )
                                                 }
                                                 maxLength={160}
                                             />
@@ -1738,10 +1822,12 @@ export default function TeacherClassroomDashboard() {
                                             <DateTimePicker
                                                 value={newAssignment.dueAt}
                                                 onChange={(nextDueAt) =>
-                                                    setNewAssignment((prev) => ({
-                                                        ...prev,
-                                                        dueAt: nextDueAt,
-                                                    }))
+                                                    setNewAssignment(
+                                                        (prev) => ({
+                                                            ...prev,
+                                                            dueAt: nextDueAt,
+                                                        }),
+                                                    )
                                                 }
                                                 placeholder="No due date"
                                             />
@@ -1757,7 +1843,8 @@ export default function TeacherClassroomDashboard() {
                                             onChange={(event) =>
                                                 setNewAssignment((prev) => ({
                                                     ...prev,
-                                                    description: event.target.value,
+                                                    description:
+                                                        event.target.value,
                                                 }))
                                             }
                                             maxLength={2000}
@@ -1770,7 +1857,8 @@ export default function TeacherClassroomDashboard() {
                                         Template
                                     </h4>
                                     <p className="mt-1 text-xs text-zinc-500">
-                                        Start from a blank environment or your prepared template.
+                                        Start from a blank environment or your
+                                        prepared template.
                                     </p>
                                     <div className="mt-3 space-y-3">
                                         <div>
@@ -1782,34 +1870,50 @@ export default function TeacherClassroomDashboard() {
                                             </label>
                                             <select
                                                 id="templateEnvironment"
-                                                value={newAssignment.templateEnvironmentId}
+                                                value={
+                                                    newAssignment.templateEnvironmentId
+                                                }
                                                 onChange={(event) =>
-                                                    setNewAssignment((prev) => ({
-                                                        ...prev,
-                                                        templateEnvironmentId:
-                                                            event.target.value,
-                                                    }))
+                                                    setNewAssignment(
+                                                        (prev) => ({
+                                                            ...prev,
+                                                            templateEnvironmentId:
+                                                                event.target
+                                                                    .value,
+                                                        }),
+                                                    )
                                                 }
                                                 className="h-9 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100"
                                             >
-                                                <option value="">Blank environment</option>
-                                                {templateEnvironments.map((environment) => (
-                                                    <option
-                                                        key={environment.id}
-                                                        value={environment.id}
-                                                    >
-                                                        {environment.name}
-                                                    </option>
-                                                ))}
+                                                <option value="">
+                                                    Blank environment
+                                                </option>
+                                                {templateEnvironments.map(
+                                                    (environment) => (
+                                                        <option
+                                                            key={environment.id}
+                                                            value={
+                                                                environment.id
+                                                            }
+                                                        >
+                                                            {environment.name}
+                                                        </option>
+                                                    ),
+                                                )}
                                             </select>
                                         </div>
                                         <Button
                                             type="button"
                                             variant="outline"
-                                            disabled={isSaving || isCreatingTemplateEnvironment}
+                                            disabled={
+                                                isSaving ||
+                                                isCreatingTemplateEnvironment
+                                            }
                                             onClick={() => {
                                                 setTemplateNameDraft("");
-                                                setIsTemplateNamePromptOpen(true);
+                                                setIsTemplateNamePromptOpen(
+                                                    true,
+                                                );
                                             }}
                                         >
                                             {isCreatingTemplateEnvironment ? (
@@ -1830,7 +1934,8 @@ export default function TeacherClassroomDashboard() {
                                     Assignment checks
                                 </h4>
                                 <p className="mt-1 text-xs text-zinc-500">
-                                    Define required files and built-in test cases.
+                                    Define required files and built-in test
+                                    cases.
                                 </p>
                                 <div className="mt-3">
                                     <label className="mb-1 block text-xs text-zinc-400">
@@ -1838,11 +1943,14 @@ export default function TeacherClassroomDashboard() {
                                     </label>
                                     <Input
                                         placeholder="main.py, helpers.py"
-                                        value={newAssignment.checklistRequiredFiles}
+                                        value={
+                                            newAssignment.checklistRequiredFiles
+                                        }
                                         onChange={(event) =>
                                             setNewAssignment((prev) => ({
                                                 ...prev,
-                                                checklistRequiredFiles: event.target.value,
+                                                checklistRequiredFiles:
+                                                    event.target.value,
                                             }))
                                         }
                                     />
@@ -1861,7 +1969,9 @@ export default function TeacherClassroomDashboard() {
                                                 size="sm"
                                                 variant="outline"
                                                 className="h-7 text-xs"
-                                                onClick={addNewAssignmentSampleTestCase}
+                                                onClick={
+                                                    addNewAssignmentSampleTestCase
+                                                }
                                             >
                                                 Add sample
                                             </Button>
@@ -1870,7 +1980,9 @@ export default function TeacherClassroomDashboard() {
                                                 size="sm"
                                                 variant="outline"
                                                 className="h-7 text-xs"
-                                                onClick={addNewAssignmentTestCase}
+                                                onClick={
+                                                    addNewAssignmentTestCase
+                                                }
                                             >
                                                 <Plus className="size-3.5" />
                                                 Add blank
@@ -1878,111 +1990,136 @@ export default function TeacherClassroomDashboard() {
                                         </div>
                                     </div>
                                     <div className="space-y-2">
-                                        {newAssignmentTestCases.map((testCase, index) => {
-                                            const isExpanded =
-                                                expandedNewTestCaseId === testCase.id;
-                                            const testCaseLabel =
-                                                testCase.name?.trim() ||
-                                                `Test ${index + 1}`;
+                                        {newAssignmentTestCases.map(
+                                            (testCase, index) => {
+                                                const isExpanded =
+                                                    expandedNewTestCaseId ===
+                                                    testCase.id;
+                                                const testCaseLabel =
+                                                    testCase.name?.trim() ||
+                                                    `Test ${index + 1}`;
 
-                                            return (
-                                                <div
-                                                    key={testCase.id}
-                                                    className="rounded border border-zinc-800 bg-zinc-950/70"
-                                                >
-                                                    <div className="flex items-center justify-between gap-2 px-2 py-1.5">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() =>
-                                                                setExpandedNewTestCaseId(
-                                                                    isExpanded
-                                                                        ? null
-                                                                        : testCase.id,
-                                                                )
-                                                            }
-                                                            className="flex min-w-0 flex-1 items-center gap-2 text-left text-xs text-zinc-200"
-                                                        >
-                                                            {isExpanded ? (
-                                                                <ChevronDown className="size-3.5 text-zinc-400" />
-                                                            ) : (
-                                                                <ChevronRight className="size-3.5 text-zinc-400" />
-                                                            )}
-                                                            <span className="truncate">
-                                                                {testCaseLabel}
-                                                            </span>
-                                                        </button>
-                                                        <div className="flex items-center gap-1">
-                                                            <Button
+                                                return (
+                                                    <div
+                                                        key={testCase.id}
+                                                        className="rounded border border-zinc-800 bg-zinc-950/70"
+                                                    >
+                                                        <div className="flex items-center justify-between gap-2 px-2 py-1.5">
+                                                            <button
                                                                 type="button"
-                                                                size="sm"
-                                                                variant="ghost"
-                                                                className="h-6 px-2 text-[11px] text-zinc-300 hover:bg-zinc-800"
                                                                 onClick={() =>
-                                                                    duplicateNewAssignmentTestCase(
-                                                                        testCase.id,
+                                                                    setExpandedNewTestCaseId(
+                                                                        isExpanded
+                                                                            ? null
+                                                                            : testCase.id,
                                                                     )
                                                                 }
+                                                                className="flex min-w-0 flex-1 items-center gap-2 text-left text-xs text-zinc-200"
                                                             >
-                                                                Duplicate
-                                                            </Button>
-                                                            <Button
-                                                                type="button"
-                                                                size="sm"
-                                                                variant="ghost"
-                                                                className="h-6 px-2 text-[11px] text-red-300 hover:bg-red-500/10"
-                                                                onClick={() =>
-                                                                    removeNewAssignmentTestCase(
-                                                                        testCase.id,
-                                                                    )
-                                                                }
-                                                            >
-                                                                Remove
-                                                            </Button>
+                                                                {isExpanded ? (
+                                                                    <ChevronDown className="size-3.5 text-zinc-400" />
+                                                                ) : (
+                                                                    <ChevronRight className="size-3.5 text-zinc-400" />
+                                                                )}
+                                                                <span className="truncate">
+                                                                    {
+                                                                        testCaseLabel
+                                                                    }
+                                                                </span>
+                                                            </button>
+                                                            <div className="flex items-center gap-1">
+                                                                <Button
+                                                                    type="button"
+                                                                    size="sm"
+                                                                    variant="ghost"
+                                                                    className="h-6 px-2 text-[11px] text-zinc-300 hover:bg-zinc-800"
+                                                                    onClick={() =>
+                                                                        duplicateNewAssignmentTestCase(
+                                                                            testCase.id,
+                                                                        )
+                                                                    }
+                                                                >
+                                                                    Duplicate
+                                                                </Button>
+                                                                <Button
+                                                                    type="button"
+                                                                    size="sm"
+                                                                    variant="ghost"
+                                                                    className="h-6 px-2 text-[11px] text-red-300 hover:bg-red-500/10"
+                                                                    onClick={() =>
+                                                                        removeNewAssignmentTestCase(
+                                                                            testCase.id,
+                                                                        )
+                                                                    }
+                                                                >
+                                                                    Remove
+                                                                </Button>
+                                                            </div>
                                                         </div>
+                                                        {isExpanded ? (
+                                                            <div className="space-y-2 border-t border-zinc-800 px-2 py-2">
+                                                                <Input
+                                                                    placeholder={`Test ${index + 1} name`}
+                                                                    value={
+                                                                        testCase.name
+                                                                    }
+                                                                    onChange={(
+                                                                        event,
+                                                                    ) =>
+                                                                        updateNewAssignmentTestCase(
+                                                                            testCase.id,
+                                                                            "name",
+                                                                            event
+                                                                                .target
+                                                                                .value,
+                                                                        )
+                                                                    }
+                                                                    maxLength={
+                                                                        120
+                                                                    }
+                                                                />
+                                                                <Textarea
+                                                                    placeholder="Input (optional)"
+                                                                    value={
+                                                                        testCase.input
+                                                                    }
+                                                                    onChange={(
+                                                                        event,
+                                                                    ) =>
+                                                                        updateNewAssignmentTestCase(
+                                                                            testCase.id,
+                                                                            "input",
+                                                                            event
+                                                                                .target
+                                                                                .value,
+                                                                        )
+                                                                    }
+                                                                    className="min-h-16"
+                                                                />
+                                                                <Textarea
+                                                                    placeholder="Expected output"
+                                                                    value={
+                                                                        testCase.expectedOutput
+                                                                    }
+                                                                    onChange={(
+                                                                        event,
+                                                                    ) =>
+                                                                        updateNewAssignmentTestCase(
+                                                                            testCase.id,
+                                                                            "expectedOutput",
+                                                                            event
+                                                                                .target
+                                                                                .value,
+                                                                        )
+                                                                    }
+                                                                    className="min-h-20"
+                                                                />
+                                                            </div>
+                                                        ) : null}
                                                     </div>
-                                                    {isExpanded ? (
-                                                        <div className="space-y-2 border-t border-zinc-800 px-2 py-2">
-                                                            <Input
-                                                                placeholder={`Test ${index + 1} name`}
-                                                                value={testCase.name}
-                                                                onChange={(event) =>
-                                                                    updateNewAssignmentTestCase(
-                                                                        testCase.id,
-                                                                        "name",
-                                                                        event.target.value,
-                                                                    )
-                                                                }
-                                                                maxLength={120}
-                                                            />
-                                                            <Textarea
-                                                                placeholder="Input (optional)"
-                                                                value={testCase.input}
-                                                                onChange={(event) =>
-                                                                    updateNewAssignmentTestCase(
-                                                                        testCase.id,
-                                                                        "input",
-                                                                        event.target.value,
-                                                                    )
-                                                                }
-                                                                className="min-h-16"
-                                                            />
-                                                            <Textarea
-                                                                placeholder="Expected output"
-                                                                value={testCase.expectedOutput}
-                                                                onChange={(event) =>
-                                                                    updateNewAssignmentTestCase(
-                                                                        testCase.id,
-                                                                        "expectedOutput",
-                                                                        event.target.value,
-                                                                    )
-                                                                }
-                                                                className="min-h-20"
-                                                            />
-                                                        </div>
-                                                    ) : null}
-                                                </div>
-                                            );
-                                        })}
+                                                );
+                                            },
+                                        )}
                                     </div>
                                 </div>
                             </section>
@@ -2064,7 +2201,8 @@ export default function TeacherClassroomDashboard() {
                     <DialogHeader>
                         <DialogTitle>Name template environment</DialogTitle>
                         <DialogDescription>
-                            Choose the name for the template before opening the editor.
+                            Choose the name for the template before opening the
+                            editor.
                         </DialogDescription>
                     </DialogHeader>
 
@@ -2072,7 +2210,9 @@ export default function TeacherClassroomDashboard() {
                         <Input
                             placeholder="Template name"
                             value={templateNameDraft}
-                            onChange={(event) => setTemplateNameDraft(event.target.value)}
+                            onChange={(event) =>
+                                setTemplateNameDraft(event.target.value)
+                            }
                             maxLength={80}
                             autoFocus
                         />
@@ -2117,7 +2257,9 @@ export default function TeacherClassroomDashboard() {
                     {!activeAssignment ? null : (
                         <>
                             <DialogHeader>
-                                <DialogTitle>{activeAssignment.title}</DialogTitle>
+                                <DialogTitle>
+                                    {activeAssignment.title}
+                                </DialogTitle>
                                 <DialogDescription>
                                     Update details, checks, and student links.
                                 </DialogDescription>
@@ -2128,7 +2270,9 @@ export default function TeacherClassroomDashboard() {
                                     <span className="inline-flex items-center gap-1 rounded border border-zinc-700 px-2 py-1">
                                         <CalendarClock className="size-3.5" />
                                         {assignmentDraft.dueAt
-                                            ? formatDueLabel(assignmentDraft.dueAt)
+                                            ? formatDueLabel(
+                                                  assignmentDraft.dueAt,
+                                              )
                                             : "No due date"}
                                     </span>
                                     <span className="inline-flex items-center gap-1 rounded border border-zinc-700 px-2 py-1">
@@ -2137,8 +2281,12 @@ export default function TeacherClassroomDashboard() {
                                     </span>
                                     <span className="inline-flex items-center gap-1 rounded border border-zinc-700 px-2 py-1">
                                         <FlaskConical className="size-3.5" />
-                                        {assignmentDraftConfiguredTestCount} test case
-                                        {assignmentDraftConfiguredTestCount === 1
+                                        {
+                                            assignmentDraftConfiguredTestCount
+                                        }{" "}
+                                        test case
+                                        {assignmentDraftConfiguredTestCount ===
+                                        1
                                             ? ""
                                             : "s"}
                                     </span>
@@ -2217,46 +2365,62 @@ export default function TeacherClassroomDashboard() {
                                         <span>Student</span>
                                         <span>Environment</span>
                                     </div>
-                                    {activeAssignment.environments.length === 0 ? (
+                                    {activeAssignment.environments.length ===
+                                    0 ? (
                                         <p className="px-3 py-3 text-sm text-zinc-400">
                                             No student environments linked.
                                         </p>
                                     ) : (
-                                        activeAssignment.environments.map((entry) => (
-                                            <div
-                                                key={entry.assignmentEnvironmentId}
-                                                className="grid grid-cols-[1fr_auto] items-center gap-3 border-b border-zinc-800 px-3 py-2 last:border-b-0"
-                                            >
-                                                <span className="text-sm text-zinc-200">
-                                                    {entry.studentUsername}
-                                                </span>
-                                                <div className="flex items-center gap-2">
-                                                    <Button asChild size="sm" variant="outline">
-                                                        <Link
-                                                            href={buildFollowEnvironmentHref(
-                                                                entry.environmentId,
-                                                                entry.studentId,
-                                                            )}
+                                        activeAssignment.environments.map(
+                                            (entry) => (
+                                                <div
+                                                    key={
+                                                        entry.assignmentEnvironmentId
+                                                    }
+                                                    className="grid grid-cols-[1fr_auto] items-center gap-3 border-b border-zinc-800 px-3 py-2 last:border-b-0"
+                                                >
+                                                    <span className="text-sm text-zinc-200">
+                                                        {entry.studentUsername}
+                                                    </span>
+                                                    <div className="flex items-center gap-2">
+                                                        <Button
+                                                            asChild
+                                                            size="sm"
+                                                            variant="outline"
                                                         >
-                                                            <LocateFixed className="size-4" />
-                                                            Follow live
-                                                        </Link>
-                                                    </Button>
-                                                    <Button asChild size="sm" variant="outline">
-                                                        <Link
-                                                            href={`/environment/${entry.environmentId}`}
+                                                            <Link
+                                                                href={buildFollowEnvironmentHref(
+                                                                    entry.environmentId,
+                                                                    entry.studentId,
+                                                                )}
+                                                            >
+                                                                <LocateFixed className="size-4" />
+                                                                Follow live
+                                                            </Link>
+                                                        </Button>
+                                                        <Button
+                                                            asChild
+                                                            size="sm"
+                                                            variant="outline"
                                                         >
-                                                            Open
-                                                            <ArrowRight className="size-4" />
-                                                        </Link>
-                                                    </Button>
+                                                            <Link
+                                                                href={`/environment/${entry.environmentId}`}
+                                                            >
+                                                                Open
+                                                                <ArrowRight className="size-4" />
+                                                            </Link>
+                                                        </Button>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        ))
+                                            ),
+                                        )
                                     )}
                                 </div>
                             ) : (
-                                <form className="space-y-4" onSubmit={handleUpdateAssignment}>
+                                <form
+                                    className="space-y-4"
+                                    onSubmit={handleUpdateAssignment}
+                                >
                                     {activeAssignmentModalTab === "details" ? (
                                         <>
                                             <section className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
@@ -2269,12 +2433,18 @@ export default function TeacherClassroomDashboard() {
                                                             Assignment title
                                                         </label>
                                                         <Input
-                                                            value={assignmentDraft.title}
+                                                            value={
+                                                                assignmentDraft.title
+                                                            }
                                                             onChange={(event) =>
-                                                                setAssignmentDraft((prev) => ({
-                                                                    ...prev,
-                                                                    title: event.target.value,
-                                                                }))
+                                                                setAssignmentDraft(
+                                                                    (prev) => ({
+                                                                        ...prev,
+                                                                        title: event
+                                                                            .target
+                                                                            .value,
+                                                                    }),
+                                                                )
                                                             }
                                                             maxLength={160}
                                                         />
@@ -2284,8 +2454,12 @@ export default function TeacherClassroomDashboard() {
                                                             Due date
                                                         </label>
                                                         <DateTimePicker
-                                                            value={assignmentDraft.dueAt}
-                                                            onChange={(nextDueAt) =>
+                                                            value={
+                                                                assignmentDraft.dueAt
+                                                            }
+                                                            onChange={(
+                                                                nextDueAt,
+                                                            ) =>
                                                                 setAssignmentDraft(
                                                                     (prev) => ({
                                                                         ...prev,
@@ -2302,13 +2476,19 @@ export default function TeacherClassroomDashboard() {
                                                         Assignment description
                                                     </label>
                                                     <Textarea
-                                                        value={assignmentDraft.description}
+                                                        value={
+                                                            assignmentDraft.description
+                                                        }
                                                         onChange={(event) =>
-                                                            setAssignmentDraft((prev) => ({
-                                                                ...prev,
-                                                                description:
-                                                                    event.target.value,
-                                                            }))
+                                                            setAssignmentDraft(
+                                                                (prev) => ({
+                                                                    ...prev,
+                                                                    description:
+                                                                        event
+                                                                            .target
+                                                                            .value,
+                                                                }),
+                                                            )
                                                         }
                                                         maxLength={2000}
                                                     />
@@ -2320,7 +2500,8 @@ export default function TeacherClassroomDashboard() {
                                                     Template
                                                 </h4>
                                                 <p className="mt-1 text-xs text-zinc-500">
-                                                    Template is fixed after creation.
+                                                    Template is fixed after
+                                                    creation.
                                                 </p>
                                                 <p className="mt-3 rounded border border-zinc-700 bg-zinc-950/60 px-3 py-2 text-sm text-zinc-300">
                                                     {activeAssignment.templateEnvironmentName ||
@@ -2343,11 +2524,14 @@ export default function TeacherClassroomDashboard() {
                                                         assignmentDraft.checklistRequiredFiles
                                                     }
                                                     onChange={(event) =>
-                                                        setAssignmentDraft((prev) => ({
-                                                            ...prev,
-                                                            checklistRequiredFiles:
-                                                                event.target.value,
-                                                        }))
+                                                        setAssignmentDraft(
+                                                            (prev) => ({
+                                                                ...prev,
+                                                                checklistRequiredFiles:
+                                                                    event.target
+                                                                        .value,
+                                                            }),
+                                                        )
                                                     }
                                                 />
                                             </div>
@@ -2395,7 +2579,9 @@ export default function TeacherClassroomDashboard() {
 
                                                             return (
                                                                 <div
-                                                                    key={testCase.id}
+                                                                    key={
+                                                                        testCase.id
+                                                                    }
                                                                     className="rounded border border-zinc-800 bg-zinc-950/70"
                                                                 >
                                                                     <div className="flex items-center justify-between gap-2 px-2 py-1.5">
@@ -2416,7 +2602,9 @@ export default function TeacherClassroomDashboard() {
                                                                                 <ChevronRight className="size-3.5 text-zinc-400" />
                                                                             )}
                                                                             <span className="truncate">
-                                                                                {testCaseLabel}
+                                                                                {
+                                                                                    testCaseLabel
+                                                                                }
                                                                             </span>
                                                                         </button>
                                                                         <div className="flex items-center gap-1">
@@ -2452,26 +2640,38 @@ export default function TeacherClassroomDashboard() {
                                                                         <div className="space-y-2 border-t border-zinc-800 px-2 py-2">
                                                                             <Input
                                                                                 placeholder={`Test ${index + 1} name`}
-                                                                                value={testCase.name}
-                                                                                onChange={(event) =>
+                                                                                value={
+                                                                                    testCase.name
+                                                                                }
+                                                                                onChange={(
+                                                                                    event,
+                                                                                ) =>
                                                                                     updateAssignmentDraftTestCase(
                                                                                         testCase.id,
                                                                                         "name",
-                                                                                        event.target.value,
+                                                                                        event
+                                                                                            .target
+                                                                                            .value,
                                                                                     )
                                                                                 }
-                                                                                maxLength={120}
+                                                                                maxLength={
+                                                                                    120
+                                                                                }
                                                                             />
                                                                             <Textarea
                                                                                 placeholder="Input (optional)"
                                                                                 value={
                                                                                     testCase.input
                                                                                 }
-                                                                                onChange={(event) =>
+                                                                                onChange={(
+                                                                                    event,
+                                                                                ) =>
                                                                                     updateAssignmentDraftTestCase(
                                                                                         testCase.id,
                                                                                         "input",
-                                                                                        event.target.value,
+                                                                                        event
+                                                                                            .target
+                                                                                            .value,
                                                                                     )
                                                                                 }
                                                                                 className="min-h-16"
@@ -2481,11 +2681,15 @@ export default function TeacherClassroomDashboard() {
                                                                                 value={
                                                                                     testCase.expectedOutput
                                                                                 }
-                                                                                onChange={(event) =>
+                                                                                onChange={(
+                                                                                    event,
+                                                                                ) =>
                                                                                     updateAssignmentDraftTestCase(
                                                                                         testCase.id,
                                                                                         "expectedOutput",
-                                                                                        event.target.value,
+                                                                                        event
+                                                                                            .target
+                                                                                            .value,
                                                                                     )
                                                                                 }
                                                                                 className="min-h-20"
@@ -2502,13 +2706,16 @@ export default function TeacherClassroomDashboard() {
                                     )}
 
                                     <DialogFooter className="border-t border-zinc-800 pt-3 sm:flex-wrap">
-                                        {activeAssignmentModalTab === "details" ? (
+                                        {activeAssignmentModalTab ===
+                                        "details" ? (
                                             <>
                                                 <Button
                                                     type="button"
                                                     variant="outline"
                                                     onClick={() =>
-                                                        setActiveAssignmentId(null)
+                                                        setActiveAssignmentId(
+                                                            null,
+                                                        )
                                                     }
                                                 >
                                                     Cancel
@@ -2612,9 +2819,13 @@ export default function TeacherClassroomDashboard() {
                             <DialogHeader>
                                 <DialogTitle>Delete class?</DialogTitle>
                                 <DialogDescription>
-                                    Delete <strong>{classDeletionCandidate.name}</strong> and
-                                    all assignments in this class? This also deletes every
-                                    student assignment environment linked to those assignments.
+                                    Delete{" "}
+                                    <strong>
+                                        {classDeletionCandidate.name}
+                                    </strong>{" "}
+                                    and all assignments in this class? This also
+                                    deletes every student assignment environment
+                                    linked to those assignments.
                                 </DialogDescription>
                             </DialogHeader>
                             <DialogFooter>
@@ -2622,7 +2833,9 @@ export default function TeacherClassroomDashboard() {
                                     type="button"
                                     variant="outline"
                                     disabled={isDeletingClass}
-                                    onClick={() => setClassDeletionCandidateId(null)}
+                                    onClick={() =>
+                                        setClassDeletionCandidateId(null)
+                                    }
                                 >
                                     Cancel
                                 </Button>
@@ -2663,14 +2876,20 @@ export default function TeacherClassroomDashboard() {
                                 <DialogDescription>
                                     Delete{" "}
                                     <strong>
-                                        {assignmentDeletionCandidate.assignment.title}
+                                        {
+                                            assignmentDeletionCandidate
+                                                .assignment.title
+                                        }
                                     </strong>{" "}
                                     from{" "}
                                     <strong>
-                                        {assignmentDeletionCandidate.classEntry.name}
+                                        {
+                                            assignmentDeletionCandidate
+                                                .classEntry.name
+                                        }
                                     </strong>
-                                    ? All linked student assignment environments will be
-                                    deleted.
+                                    ? All linked student assignment environments
+                                    will be deleted.
                                 </DialogDescription>
                             </DialogHeader>
                             <DialogFooter>
@@ -2678,7 +2897,9 @@ export default function TeacherClassroomDashboard() {
                                     type="button"
                                     variant="outline"
                                     disabled={isDeletingAssignment}
-                                    onClick={() => setAssignmentDeletionCandidateId(null)}
+                                    onClick={() =>
+                                        setAssignmentDeletionCandidateId(null)
+                                    }
                                 >
                                     Cancel
                                 </Button>
