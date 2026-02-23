@@ -247,8 +247,8 @@ export async function GET(request, { params }) {
                 classId: assignmentContext?.class_id || null,
                 templateEnvironmentId:
                     assignmentContext?.template_environment_id || null,
-                instructionsReadOnly: true,
-                environmentReadOnly: true,
+                instructionsReadOnly: false,
+                environmentReadOnly: false,
                 canResetToTemplate: false,
             },
         };

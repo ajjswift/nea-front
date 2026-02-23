@@ -97,7 +97,7 @@ async function resolveAccessContext(request, environmentId) {
             assignmentContext,
             isAssignmentEnvironment,
             canView: isAssignmentEnvironment,
-            canEdit: false,
+            canEdit: isAssignmentEnvironment,
         };
     }
 
