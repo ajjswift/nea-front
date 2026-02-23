@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { randomUUID } from "crypto";
 import db from "@/utils/pg";
 import { SessionService } from "@/lib/auth/SessionService";
 import { EnvironmentRepository } from "@/lib/environments/EnvironmentRepository";
@@ -18,6 +19,33 @@ const classroomService = new ClassroomService({
     classroomRepository,
     database: db,
 });
+
+const ANON_NAME_COOKIE = "anon_viewer_name";
+const ANON_ID_COOKIE = "anon_viewer_id";
+const ANON_ADJECTIVES = [
+    "Curious",
+    "Calm",
+    "Bright",
+    "Helpful",
+    "Focused",
+    "Swift",
+    "Keen",
+    "Steady",
+    "Bold",
+    "Patient",
+];
+const ANON_NOUNS = [
+    "Otter",
+    "Fox",
+    "Falcon",
+    "Lynx",
+    "Panda",
+    "Robin",
+    "Seal",
+    "Koala",
+    "Wolf",
+    "Badger",
+];
 
 function unauthorizedResponse() {
     return NextResponse.json(
@@ -41,14 +69,56 @@ function isMissingTableError(error) {
     return error?.code === "42P01";
 }
 
+function normalizeCookieValue(value, maxLength = 80) {
+    if (typeof value !== "string") {
+        return "";
+    }
+    return value.trim().slice(0, maxLength);
+}
+
+function generateAnonymousName() {
+    const adjective =
+        ANON_ADJECTIVES[Math.floor(Math.random() * ANON_ADJECTIVES.length)];
+    const noun = ANON_NOUNS[Math.floor(Math.random() * ANON_NOUNS.length)];
+    const number = Math.floor(100 + Math.random() * 900);
+    return `${adjective} ${noun} ${number}`;
+}
+
+function getAnonymousViewerFromRequest(request) {
+    const existingName = normalizeCookieValue(
+        request.cookies.get(ANON_NAME_COOKIE)?.value,
+    );
+    const existingId = normalizeCookieValue(
+        request.cookies.get(ANON_ID_COOKIE)?.value,
+        120,
+    );
+
+    if (existingName && existingId) {
+        return {
+            viewer: {
+                id: existingId,
+                username: existingName,
+                role: "anonymous",
+                anonymous: true,
+            },
+            shouldPersist: false,
+        };
+    }
+
+    return {
+        viewer: {
+            id: `anon-${randomUUID()}`,
+            username: generateAnonymousName(),
+            role: "anonymous",
+            anonymous: true,
+        },
+        shouldPersist: true,
+    };
+}
+
 export async function GET(request, { params }) {
     try {
         const user = await sessionService.getAuthenticatedUser(request);
-
-        if (!user) {
-            return unauthorizedResponse();
-        }
-
         const resolvedParams = await params;
         const rawEnvironmentId = resolvedParams?.environmentId;
         const environmentId = Array.isArray(rawEnvironmentId)
@@ -62,39 +132,7 @@ export async function GET(request, { params }) {
             );
         }
 
-        const cacheKey = frontendCacheKeys.environmentDetail(
-            user.userId,
-            environmentId,
-        );
-        const cachedPayload = await frontendCacheService.getJson(cacheKey);
-        if (cachedPayload) {
-            return NextResponse.json(cachedPayload, { status: 200 });
-        }
-
-        let environment = await environmentService.getForUser(
-            user.userId,
-            environmentId,
-        );
         let assignmentContext = null;
-
-        if (!environment && user.role === "teacher") {
-            const canAccess = await classroomService.canTeacherAccessEnvironment(
-                user,
-                environmentId,
-            );
-
-            if (canAccess) {
-                environment = await environmentRepository.findById(environmentId);
-            }
-        }
-
-        if (!environment) {
-            return NextResponse.json(
-                { error: "Environment not found." },
-                { status: 404 },
-            );
-        }
-
         try {
             assignmentContext =
                 await classroomRepository.findAssignmentEnvironmentContext(
@@ -104,30 +142,136 @@ export async function GET(request, { params }) {
             if (!isMissingTableError(error)) {
                 throw error;
             }
-
             assignmentContext = null;
         }
 
         const isAssignmentEnvironment = Boolean(assignmentContext);
-        const isAssignmentStudentOwner =
-            isAssignmentEnvironment &&
-            user.role === "student" &&
-            assignmentContext.student_id === user.userId;
+        const anonymousViewer =
+            !user && isAssignmentEnvironment
+                ? getAnonymousViewerFromRequest(request)
+                : null;
+
+        if (!user && !anonymousViewer) {
+            return unauthorizedResponse();
+        }
+
+        let environment = null;
+        if (user) {
+            const cacheKey = frontendCacheKeys.environmentDetail(
+                user.userId,
+                environmentId,
+            );
+            const cachedPayload = await frontendCacheService.getJson(cacheKey);
+            if (cachedPayload) {
+                return NextResponse.json(cachedPayload, { status: 200 });
+            }
+
+            environment = await environmentService.getForUser(
+                user.userId,
+                environmentId,
+            );
+
+            if (!environment && user.role === "teacher") {
+                const canAccess = await classroomService.canTeacherAccessEnvironment(
+                    user,
+                    environmentId,
+                );
+
+                if (canAccess) {
+                    environment = await environmentRepository.findById(environmentId);
+                }
+            }
+
+            if (!environment) {
+                return NextResponse.json(
+                    { error: "Environment not found." },
+                    { status: 404 },
+                );
+            }
+
+            const isAssignmentStudentOwner =
+                isAssignmentEnvironment &&
+                user.role === "student" &&
+                assignmentContext?.student_id === user.userId;
+            const isAssignmentTeacherViewer =
+                isAssignmentEnvironment &&
+                user.role === "teacher" &&
+                assignmentContext?.teacher_id === user.userId;
+            const canResetToTemplate = Boolean(
+                assignmentContext?.template_environment_id &&
+                    (isAssignmentStudentOwner || isAssignmentTeacherViewer),
+            );
+
+            const payload = {
+                environment: environment.toJSON(),
+                viewer: {
+                    id: user.userId,
+                    username: user.username,
+                    role: user.role || "student",
+                    anonymous: false,
+                },
+                access: {
+                    viewerUserId: user.userId,
+                    viewerRole: user.role || "student",
+                    isAssignmentEnvironment,
+                    assignmentId: assignmentContext?.assignment_id || null,
+                    classId: assignmentContext?.class_id || null,
+                    templateEnvironmentId:
+                        assignmentContext?.template_environment_id || null,
+                    instructionsReadOnly: Boolean(isAssignmentStudentOwner),
+                    environmentReadOnly: false,
+                    canResetToTemplate,
+                },
+            };
+
+            await frontendCacheService.setJson(cacheKey, payload, 20);
+            return NextResponse.json(payload, { status: 200 });
+        }
+
+        environment = await environmentRepository.findById(environmentId);
+        if (!environment) {
+            return NextResponse.json(
+                { error: "Environment not found." },
+                { status: 404 },
+            );
+        }
 
         const payload = {
             environment: environment.toJSON(),
+            viewer: anonymousViewer.viewer,
             access: {
-                viewerUserId: user.userId,
-                viewerRole: user.role || "student",
+                viewerUserId: anonymousViewer.viewer.id,
+                viewerRole: anonymousViewer.viewer.role,
                 isAssignmentEnvironment,
                 assignmentId: assignmentContext?.assignment_id || null,
                 classId: assignmentContext?.class_id || null,
-                instructionsReadOnly: Boolean(isAssignmentStudentOwner),
+                templateEnvironmentId:
+                    assignmentContext?.template_environment_id || null,
+                instructionsReadOnly: true,
+                environmentReadOnly: true,
+                canResetToTemplate: false,
             },
         };
 
-        await frontendCacheService.setJson(cacheKey, payload, 20);
-        return NextResponse.json(payload, { status: 200 });
+        const response = NextResponse.json(payload, { status: 200 });
+        if (anonymousViewer.shouldPersist) {
+            response.cookies.set(ANON_NAME_COOKIE, anonymousViewer.viewer.username, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === "production",
+                sameSite: "lax",
+                path: "/",
+                maxAge: 60 * 60 * 24 * 365,
+            });
+            response.cookies.set(ANON_ID_COOKIE, anonymousViewer.viewer.id, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === "production",
+                sameSite: "lax",
+                path: "/",
+                maxAge: 60 * 60 * 24 * 365,
+            });
+        }
+
+        return response;
     } catch (error) {
         console.error("Failed to fetch environment by id:", error);
 

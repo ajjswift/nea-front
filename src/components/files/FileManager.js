@@ -42,6 +42,9 @@ export function FileManager() {
     const isReadOnlyInstructions = Boolean(
         environment?.permissions?.readOnlyInstructions,
     );
+    const isEnvironmentReadOnly = Boolean(
+        environment?.permissions?.readOnlyEnvironment,
+    );
     const isAssignmentEnvironment = Boolean(
         environment?.access?.isAssignmentEnvironment,
     );
@@ -51,6 +54,10 @@ export function FileManager() {
     };
 
     const createFile = (fileName) => {
+        if (isEnvironmentReadOnly) {
+            return;
+        }
+
         const normalizedFileName = (fileName || "").trim();
 
         if (!normalizedFileName || !isValidFileName(normalizedFileName)) {
@@ -94,6 +101,10 @@ export function FileManager() {
     };
 
     const deleteFile = (fileId) => {
+        if (isEnvironmentReadOnly) {
+            return;
+        }
+
         setEnvironment((prev) => {
             const previousFiles = Array.isArray(prev.files) ? prev.files : [];
             const targetFile = previousFiles.find((file) => file.id === fileId);
@@ -134,6 +145,10 @@ export function FileManager() {
     };
 
     const renameFile = (fileId, newName) => {
+        if (isEnvironmentReadOnly) {
+            return;
+        }
+
         const normalizedNewName = (newName || "").trim();
 
         if (!normalizedNewName || !isValidFileName(normalizedNewName)) {
@@ -190,6 +205,7 @@ export function FileManager() {
                 newFileOpen={newFileOpen}
                 setNewFileOpen={setNewFileOpen}
                 createFile={createFile}
+                disabled={isEnvironmentReadOnly}
             />
 
             {pinnedInstructionsFile ? (
@@ -216,6 +232,10 @@ export function FileManager() {
                         isInstructionsFile(pinnedInstructionsFile.name) ? (
                             <ContextMenuItem disabled>
                                 Locked in assignment
+                            </ContextMenuItem>
+                        ) : isEnvironmentReadOnly ? (
+                            <ContextMenuItem disabled>
+                                View-only environment
                             </ContextMenuItem>
                         ) : (
                             <>
@@ -261,6 +281,10 @@ export function FileManager() {
                             <ContextMenuItem disabled>
                                 Locked in assignment
                             </ContextMenuItem>
+                        ) : isEnvironmentReadOnly ? (
+                            <ContextMenuItem disabled>
+                                View-only environment
+                            </ContextMenuItem>
                         ) : (
                             <>
                                 {/* Note: We removed the wrapping ContextMenuItem here.
@@ -282,7 +306,7 @@ export function FileManager() {
     );
 }
 
-function NewFileDialog({ newFileOpen, setNewFileOpen, createFile }) {
+function NewFileDialog({ newFileOpen, setNewFileOpen, createFile, disabled }) {
     const [fileName, setFileName] = useState("");
 
     const isValid = isValidFileName(fileName);
@@ -299,6 +323,7 @@ function NewFileDialog({ newFileOpen, setNewFileOpen, createFile }) {
                 <button
                     className="flex items-center gap-2 cursor-pointer outline-none"
                     onClick={() => setNewFileOpen(true)}
+                    disabled={disabled}
                 >
                     <FontAwesomeIcon icon={faFileCirclePlus} />
                     <span>New File</span>

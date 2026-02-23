@@ -591,7 +591,8 @@ export class ClassroomRepository {
                     ae.assignment_id,
                     ae.student_id,
                     a.class_id,
-                    a.teacher_id
+                    a.teacher_id,
+                    a.template_environment_id
                 FROM assignment_environments AS ae
                 INNER JOIN assignments AS a
                     ON a.id = ae.assignment_id

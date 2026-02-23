@@ -24,6 +24,32 @@ export class EnvironmentApiClient {
         return this.sendRequest("GET", null, `/${environmentId}`);
     }
 
+    async resetEnvironmentToTemplate(environmentId) {
+        return this.sendRequest("POST", null, `/${environmentId}/reset-template`);
+    }
+
+    async formatPythonFile(environmentId, payload) {
+        return this.sendRequest(
+            "POST",
+            {
+                action: "format",
+                ...payload,
+            },
+            `/${environmentId}/python-tools`,
+        );
+    }
+
+    async lintPythonFile(environmentId, payload) {
+        return this.sendRequest(
+            "POST",
+            {
+                action: "lint",
+                ...payload,
+            },
+            `/${environmentId}/python-tools`,
+        );
+    }
+
     async sendRequest(method, body = null, path = "") {
         const response = await fetch(`${this.basePath}${path}`, {
             method,

@@ -8,6 +8,7 @@ import {
     ArrowRight,
     Clipboard,
     LoaderCircle,
+    LocateFixed,
     Plus,
     Save,
     UserMinus,
@@ -67,6 +68,18 @@ function formatDueLabel(value) {
     }
 
     return date.toLocaleString();
+}
+
+function buildFollowEnvironmentHref(environmentId, studentId) {
+    const basePath = `/environment/${environmentId}`;
+    if (!studentId) {
+        return basePath;
+    }
+
+    const params = new URLSearchParams({
+        followStudent: studentId,
+    });
+    return `${basePath}?${params.toString()}`;
 }
 
 export default function TeacherClassroomDashboard() {
@@ -1043,12 +1056,27 @@ export default function TeacherClassroomDashboard() {
                                             <span className="truncate text-sm text-zinc-200">
                                                 {entry.assignmentTitle}
                                             </span>
-                                            <Button asChild size="sm" variant="outline">
-                                                <Link href={`/environment/${entry.environmentId}`}>
-                                                    Open
-                                                    <ArrowRight className="size-4" />
-                                                </Link>
-                                            </Button>
+                                            <div className="flex items-center gap-2">
+                                                <Button asChild size="sm" variant="outline">
+                                                    <Link
+                                                        href={buildFollowEnvironmentHref(
+                                                            entry.environmentId,
+                                                            entry.studentId,
+                                                        )}
+                                                    >
+                                                        <LocateFixed className="size-4" />
+                                                        Follow live
+                                                    </Link>
+                                                </Button>
+                                                <Button asChild size="sm" variant="outline">
+                                                    <Link
+                                                        href={`/environment/${entry.environmentId}`}
+                                                    >
+                                                        Open
+                                                        <ArrowRight className="size-4" />
+                                                    </Link>
+                                                </Button>
+                                            </div>
                                         </div>
                                     ))
                                 )}
@@ -1385,12 +1413,27 @@ export default function TeacherClassroomDashboard() {
                                             <span className="text-sm text-zinc-200">
                                                 {entry.studentUsername}
                                             </span>
-                                            <Button asChild size="sm" variant="outline">
-                                                <Link href={`/environment/${entry.environmentId}`}>
-                                                    Open
-                                                    <ArrowRight className="size-4" />
-                                                </Link>
-                                            </Button>
+                                            <div className="flex items-center gap-2">
+                                                <Button asChild size="sm" variant="outline">
+                                                    <Link
+                                                        href={buildFollowEnvironmentHref(
+                                                            entry.environmentId,
+                                                            entry.studentId,
+                                                        )}
+                                                    >
+                                                        <LocateFixed className="size-4" />
+                                                        Follow live
+                                                    </Link>
+                                                </Button>
+                                                <Button asChild size="sm" variant="outline">
+                                                    <Link
+                                                        href={`/environment/${entry.environmentId}`}
+                                                    >
+                                                        Open
+                                                        <ArrowRight className="size-4" />
+                                                    </Link>
+                                                </Button>
+                                            </div>
                                         </div>
                                     ))
                                 )}

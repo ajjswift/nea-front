@@ -39,6 +39,22 @@ const emptyFormState = {
     description: "",
 };
 
+function getDueBadgeClass(tone) {
+    if (tone === "overdue") {
+        return "border-red-400/50 bg-red-500/15 text-red-200";
+    }
+    if (tone === "today") {
+        return "border-amber-400/50 bg-amber-500/15 text-amber-200";
+    }
+    if (tone === "tomorrow") {
+        return "border-yellow-400/50 bg-yellow-500/15 text-yellow-200";
+    }
+    if (tone === "soon") {
+        return "border-sky-400/50 bg-sky-500/15 text-sky-200";
+    }
+    return "border-zinc-600 bg-zinc-800 text-zinc-300";
+}
+
 export default function EnvironmentDashboard() {
     const router = useRouter();
     const [formState, setFormState] = useState(emptyFormState);
@@ -393,6 +409,18 @@ export default function EnvironmentDashboard() {
                                                             <Clock3 className="size-3" />
                                                             {assignment.dueAtLabel}
                                                         </span>
+                                                        {assignment.dueUrgency ? (
+                                                            <span
+                                                                className={`rounded border px-2 py-0.5 ${getDueBadgeClass(
+                                                                    assignment.dueUrgency.tone,
+                                                                )}`}
+                                                            >
+                                                                {
+                                                                    assignment.dueUrgency
+                                                                        .label
+                                                                }
+                                                            </span>
+                                                        ) : null}
                                                         <span>{assignment.className}</span>
                                                     </div>
                                                 </div>

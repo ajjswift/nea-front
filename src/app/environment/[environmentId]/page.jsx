@@ -7,8 +7,25 @@ import { FileViewer } from "@/components/files/FileViewer";
 import { Console } from "@/components/files/Console";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, CirclePlay, LoaderCircle } from "lucide-react";
+import {
+    ArrowLeft,
+    CirclePlay,
+    Copy,
+    Focus,
+    LoaderCircle,
+    LocateFixed,
+    RotateCcw,
+    SquareTerminal,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
 import {
     ApiError,
     EnvironmentApiClient,
@@ -28,8 +45,22 @@ export default function EnvironmentPage() {
     const [isMetaLoading, setIsMetaLoading] = useState(true);
     const [environmentName, setEnvironmentName] = useState("Environment");
     const [metadataError, setMetadataError] = useState("");
+    const [infoMessage, setInfoMessage] = useState("");
+    const [isFocusMode, setIsFocusMode] = useState(false);
+    const [showConsole, setShowConsole] = useState(true);
+    const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+    const [isResettingTemplate, setIsResettingTemplate] = useState(false);
+    const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
+    const [followStudentId, setFollowStudentId] = useState(() => {
+        const value = searchParams.get("followStudent");
+        return value ? value.trim() : "";
+    });
+    const [clockTick, setClockTick] = useState(Date.now());
     const hasSeededInstructionsRef = useRef(false);
     const isReady = environment?.ws?.readyState === 1;
+    const isReadOnlyEnvironment = Boolean(
+        environment?.permissions?.readOnlyEnvironment,
+    );
 
     const shortEnvironmentId = useMemo(() => {
         if (!environmentId) {
@@ -39,23 +70,160 @@ export default function EnvironmentPage() {
         return environmentId.slice(0, 8);
     }, [environmentId]);
 
-    const backHref = useMemo(() => {
-        const requestedReturn = searchParams.get("returnTo");
-        if (!requestedReturn || !requestedReturn.startsWith("/")) {
-            return "/";
-        }
-
-        return requestedReturn;
-    }, [searchParams]);
-
-    const backLabel = backHref.startsWith("/classroom")
-        ? "Back to classroom"
-        : "Back";
+    const backHref = "/";
+    const backLabel = "Back home";
 
     const displayedName = environment?.name || environmentName;
 
-    const runProgram = () => {
-        if (!environment?.ws || !Array.isArray(environment?.files)) {
+    const collaboratorEntries = useMemo(() => {
+        const onlineUsers = Array.isArray(environment?.onlineUsers)
+            ? environment.onlineUsers
+            : [];
+        const selfId = environment?.userId;
+
+        return onlineUsers
+            .filter((entry) => entry?.id && entry.id !== selfId)
+            .map((entry) => ({
+                id: entry.id,
+                userName: entry.userName || "User",
+            }));
+    }, [environment?.onlineUsers, environment?.userId]);
+    const followedCollaborator = useMemo(() => {
+        if (!followStudentId) {
+            return null;
+        }
+
+        return (
+            collaboratorEntries.find((entry) => entry.id === followStudentId) || null
+        );
+    }, [collaboratorEntries, followStudentId]);
+    const classHref = useMemo(() => {
+        const classId = environment?.access?.classId;
+        if (!classId) {
+            return null;
+        }
+
+        return `/classroom?classId=${encodeURIComponent(classId)}`;
+    }, [environment?.access?.classId]);
+
+    const syncInfo = useMemo(() => {
+        const sync = environment?.sync || {};
+        const pendingCount = Number.isFinite(sync.pendingCount)
+            ? sync.pendingCount
+            : 0;
+        const conflictAt = Number.isFinite(sync.conflictAt) ? sync.conflictAt : null;
+        const lastSavedAt = Number.isFinite(sync.lastSavedAt)
+            ? sync.lastSavedAt
+            : null;
+
+        let statusLabel = "Saved";
+        let statusTone = "text-zinc-300";
+        if (!isReady || sync.status === "offline") {
+            statusLabel = "Offline";
+            statusTone = "text-amber-200";
+        } else if (pendingCount > 0 || sync.status === "saving") {
+            statusLabel = "Saving...";
+            statusTone = "text-amber-200";
+        } else if (lastSavedAt) {
+            const elapsedSeconds = Math.max(
+                0,
+                Math.floor((clockTick - lastSavedAt) / 1000),
+            );
+            if (elapsedSeconds < 5) {
+                statusLabel = "Saved just now";
+            } else if (elapsedSeconds < 60) {
+                statusLabel = `Saved ${elapsedSeconds}s ago`;
+            } else {
+                const elapsedMinutes = Math.floor(elapsedSeconds / 60);
+                statusLabel = `Saved ${elapsedMinutes}m ago`;
+            }
+            statusTone = "text-emerald-200";
+        }
+
+        const hasRecentConflict =
+            Boolean(conflictAt) && clockTick - conflictAt < 8000;
+
+        return {
+            statusLabel,
+            statusTone,
+            hasRecentConflict,
+        };
+    }, [clockTick, environment?.sync, isReady]);
+
+    const canResetToTemplate = Boolean(environment?.access?.canResetToTemplate);
+    const isAssignmentEnvironment = Boolean(
+        environment?.access?.isAssignmentEnvironment,
+    );
+    const commandActions = [
+        {
+            id: "run",
+            label: "Run program",
+            shortcut: "Cmd/Ctrl + Enter",
+            disabled: !isReady || isRunning || isMetaLoading || isReadOnlyEnvironment,
+            action: () => runProgram(),
+        },
+        {
+            id: "share",
+            label: "Copy share URL",
+            shortcut: "Cmd/Ctrl + Shift + S",
+            disabled: false,
+            action: () => handleCopyShareUrl(),
+        },
+        {
+            id: "focus",
+            label: isFocusMode ? "Exit focus mode" : "Enter focus mode",
+            shortcut: "Cmd/Ctrl + Shift + F",
+            disabled: false,
+            action: () => setIsFocusMode((prev) => !prev),
+        },
+        {
+            id: "console",
+            label: showConsole ? "Hide console" : "Show console",
+            shortcut: "Cmd/Ctrl + Shift + C",
+            disabled: false,
+            action: () => setShowConsole((prev) => !prev),
+        },
+        ...(isAssignmentEnvironment
+            ? [
+                  {
+                      id: "reset-template",
+                      label: "Reset to template",
+                      shortcut: "Cmd/Ctrl + Shift + R",
+                      disabled: !canResetToTemplate || isResettingTemplate,
+                      action: () => requestResetToTemplate(),
+                  },
+              ]
+            : []),
+    ];
+
+    function requestResetToTemplate() {
+        if (!canResetToTemplate || !environmentId || isResettingTemplate) {
+            return;
+        }
+        setIsResetConfirmOpen(true);
+    }
+
+    useEffect(() => {
+        const nextFollowValue = searchParams.get("followStudent") || "";
+        setFollowStudentId(nextFollowValue.trim());
+    }, [searchParams]);
+
+    useEffect(() => {
+        setEnvironment((prev) => ({
+            ...prev,
+            followMode: {
+                enabled: Boolean(followStudentId),
+                studentId: followStudentId || null,
+            },
+        }));
+    }, [followStudentId, setEnvironment]);
+
+    function runProgram() {
+        if (
+            isReadOnlyEnvironment ||
+            !environment?.ws ||
+            !Array.isArray(environment?.files)
+        ) {
             return;
         }
 
@@ -79,7 +247,66 @@ export default function EnvironmentPage() {
                 environment.consoleRef.current.focus();
             }, 50);
         }
-    };
+    }
+
+    async function handleCopyShareUrl() {
+        try {
+            await navigator.clipboard.writeText(window.location.href);
+            setInfoMessage("Share URL copied to clipboard.");
+        } catch {
+            setInfoMessage("Could not copy URL from this browser context.");
+        }
+    }
+
+    async function handleResetToTemplate() {
+        if (!canResetToTemplate || !environmentId) {
+            return;
+        }
+
+        setIsResettingTemplate(true);
+        setMetadataError("");
+
+        try {
+            const payload =
+                await environmentApiClient.resetEnvironmentToTemplate(environmentId);
+            const files = Array.isArray(payload?.files) ? payload.files : [];
+
+            setEnvironment((prev) => {
+                const nextCurrentFile =
+                    files.find((file) => file.id === prev.currentFile)?.id ||
+                    files[0]?.id ||
+                    prev.currentFile ||
+                    null;
+
+                if (prev.ws?.readyState === 1) {
+                    prev.ws.send(
+                        JSON.stringify({
+                            type: "fileUpdate",
+                            data: {
+                                fileId: nextCurrentFile,
+                                changes: [],
+                                files,
+                                userId: prev.userId,
+                            },
+                        }),
+                    );
+                }
+
+                return {
+                    ...prev,
+                    files,
+                    currentFile: nextCurrentFile,
+                    console: "",
+                };
+            });
+
+            setInfoMessage("Environment reset to assignment template.");
+        } catch (error) {
+            setMetadataError(error?.message || "Could not reset from template.");
+        } finally {
+            setIsResettingTemplate(false);
+        }
+    }
 
     useEffect(() => {
         if (environment.isRunning !== undefined) {
@@ -115,14 +342,20 @@ export default function EnvironmentPage() {
                 }
 
                 const loadedName = payload?.environment?.name || fallbackName;
+                const viewer = payload?.viewer || null;
                 setEnvironmentName(loadedName);
                 setEnvironment((prev) => ({
                     ...prev,
                     id: environmentId,
                     name: loadedName,
+                    viewerName: viewer?.username || prev.viewerName || "User",
+                    userId: viewer?.id || prev.userId,
                     permissions: {
                         readOnlyInstructions: Boolean(
                             payload?.access?.instructionsReadOnly,
+                        ),
+                        readOnlyEnvironment: Boolean(
+                            payload?.access?.environmentReadOnly,
                         ),
                     },
                     access: payload?.access || null,
@@ -162,8 +395,21 @@ export default function EnvironmentPage() {
     }, [environmentId]);
 
     useEffect(() => {
+        const intervalId = setInterval(() => {
+            setClockTick(Date.now());
+        }, 1000);
+
+        return () => clearInterval(intervalId);
+    }, []);
+
+    useEffect(() => {
         const shouldSeedInstructions = searchParams.get("seedInstructions") === "1";
-        if (!shouldSeedInstructions || hasSeededInstructionsRef.current || !isReady) {
+        if (
+            !shouldSeedInstructions ||
+            hasSeededInstructionsRef.current ||
+            !isReady ||
+            isReadOnlyEnvironment
+        ) {
             return;
         }
 
@@ -211,11 +457,80 @@ export default function EnvironmentPage() {
             currentFile: instructionsFileId,
         }));
         hasSeededInstructionsRef.current = true;
-    }, [environment, isReady, searchParams, setEnvironment]);
+    }, [
+        environment,
+        isReadOnlyEnvironment,
+        isReady,
+        searchParams,
+        setEnvironment,
+    ]);
+
+    useEffect(() => {
+        if (!metadataError && !infoMessage) {
+            return;
+        }
+
+        const timeoutId = setTimeout(() => {
+            setMetadataError("");
+            setInfoMessage("");
+        }, 3500);
+
+        return () => clearTimeout(timeoutId);
+    }, [metadataError, infoMessage]);
+
+    useEffect(() => {
+        const handleKeyDown = (event) => {
+            const isMac = navigator.platform.toUpperCase().includes("MAC");
+            const modKey = isMac ? event.metaKey : event.ctrlKey;
+
+            if (!modKey) return;
+
+            const key = event.key.toLowerCase();
+            if (key === "enter") {
+                event.preventDefault();
+                runProgram();
+                return;
+            }
+
+            if (event.shiftKey && key === "f") {
+                event.preventDefault();
+                setIsFocusMode((prev) => !prev);
+                return;
+            }
+
+            if (event.shiftKey && key === "c") {
+                event.preventDefault();
+                setShowConsole((prev) => !prev);
+                return;
+            }
+
+            if (event.shiftKey && key === "s") {
+                event.preventDefault();
+                handleCopyShareUrl();
+                return;
+            }
+
+            if (event.shiftKey && key === "r") {
+                event.preventDefault();
+                requestResetToTemplate();
+                return;
+            }
+
+            if (key === "k") {
+                event.preventDefault();
+                setIsCommandPaletteOpen(true);
+                return;
+            }
+
+        };
+
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
+    });
 
     return (
         <div className="h-screen bg-zinc-950 text-zinc-100">
-            <main className="mx-auto flex h-full w-full max-w-[1600px] flex-col px-3 py-3 md:px-4">
+            <main className="mx-auto flex h-full w-full max-w-[1680px] flex-col px-3 py-3 md:px-4">
                 <header className="mb-3 rounded-lg border border-zinc-800 bg-zinc-900">
                     <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 md:px-4">
                         <div className="flex min-w-0 items-center gap-2">
@@ -250,9 +565,72 @@ export default function EnvironmentPage() {
                                 />
                                 {isReady ? "Connected" : "Connecting"}
                             </span>
+                            <span
+                                className={`inline-flex h-8 items-center rounded-md border border-zinc-700 px-3 text-xs ${syncInfo.statusTone}`}
+                            >
+                                {syncInfo.statusLabel}
+                            </span>
+                            {syncInfo.hasRecentConflict ? (
+                                <span className="inline-flex h-8 items-center rounded-md border border-amber-400/40 bg-amber-500/20 px-3 text-xs text-amber-100">
+                                    Concurrent edits merged
+                                </span>
+                            ) : null}
+                            {classHref ? (
+                                <Button asChild size="sm" variant="outline" className="h-8">
+                                    <Link href={classHref}>Open class</Link>
+                                </Button>
+                            ) : null}
+                            <Button
+                                onClick={handleCopyShareUrl}
+                                size="sm"
+                                variant="outline"
+                                className="h-8"
+                            >
+                                <Copy className="size-4" />
+                                Share
+                            </Button>
+                            <Button
+                                onClick={() => setIsFocusMode((prev) => !prev)}
+                                size="sm"
+                                variant="outline"
+                                className="h-8"
+                            >
+                                <Focus className="size-4" />
+                                {isFocusMode ? "Exit focus" : "Focus"}
+                            </Button>
+                            <Button
+                                onClick={() => setShowConsole((prev) => !prev)}
+                                size="sm"
+                                variant="outline"
+                                className="h-8"
+                            >
+                                <SquareTerminal className="size-4" />
+                                {showConsole ? "Hide console" : "Show console"}
+                            </Button>
+                            {isAssignmentEnvironment ? (
+                                <Button
+                                    onClick={requestResetToTemplate}
+                                    disabled={!canResetToTemplate || isResettingTemplate}
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-8"
+                                >
+                                    {isResettingTemplate ? (
+                                        <LoaderCircle className="size-4 animate-spin" />
+                                    ) : (
+                                        <RotateCcw className="size-4" />
+                                    )}
+                                    Reset
+                                </Button>
+                            ) : null}
                             <Button
                                 onClick={runProgram}
-                                disabled={!isReady || isRunning || isMetaLoading}
+                                disabled={
+                                    !isReady ||
+                                    isRunning ||
+                                    isMetaLoading ||
+                                    isReadOnlyEnvironment
+                                }
                                 size="sm"
                                 className="h-8 bg-zinc-100 text-zinc-900 hover:bg-zinc-200"
                             >
@@ -271,27 +649,81 @@ export default function EnvironmentPage() {
                         </div>
                     </div>
 
-                    {metadataError && (
-                        <p className="border-t border-zinc-800 bg-red-500/10 px-4 py-2 text-sm text-red-200">
-                            {metadataError}
-                        </p>
-                    )}
+                    {!isFocusMode ? (
+                        <div className="flex flex-wrap items-center gap-2 border-t border-zinc-800 px-4 py-2 text-xs text-zinc-400">
+                            <span>Collaborators:</span>
+                            {collaboratorEntries.length > 0 ? (
+                                collaboratorEntries.map((entry) => (
+                                    <button
+                                        key={entry.id}
+                                        type="button"
+                                        onClick={() => setFollowStudentId(entry.id)}
+                                        className="rounded border border-zinc-700 bg-zinc-800 px-2 py-0.5 text-zinc-200"
+                                    >
+                                        {entry.userName}
+                                    </button>
+                                ))
+                            ) : (
+                                <span className="text-zinc-500">Just you right now</span>
+                            )}
+                            {followStudentId ? (
+                                <span className="ml-2 inline-flex items-center gap-1 rounded border border-zinc-700 bg-zinc-800 px-2 py-0.5 text-zinc-200">
+                                    <LocateFixed className="size-3" />
+                                    Following{" "}
+                                    {followedCollaborator?.userName || "student"}
+                                </span>
+                            ) : null}
+                            {followStudentId ? (
+                                <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-6 px-2 text-xs text-zinc-300 hover:bg-zinc-800"
+                                    onClick={() => setFollowStudentId("")}
+                                >
+                                    Stop
+                                </Button>
+                            ) : null}
+                            {isReadOnlyEnvironment ? (
+                                <span className="ml-auto rounded border border-amber-400/40 bg-amber-600 px-2 py-0.5 text-amber-50">
+                                    View-only mode
+                                </span>
+                            ) : null}
+                        </div>
+                    ) : null}
                 </header>
 
                 {isReady ? (
-                    <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[260px_minmax(0,1fr)]">
-                        <aside className="min-h-0 overflow-auto rounded-lg border border-zinc-800 bg-zinc-900 p-3">
-                            <div className="mb-3 flex items-center justify-between text-xs text-zinc-500">
-                                <span>Files</span>
-                                <span>{environment?.files?.length || 0}</span>
-                            </div>
-                            <FileManager />
-                        </aside>
+                    <div
+                        className={cn(
+                            "min-h-0 flex-1 gap-3",
+                            isFocusMode
+                                ? "grid grid-cols-1"
+                                : "grid lg:grid-cols-[260px_minmax(0,1fr)]",
+                        )}
+                    >
+                        {!isFocusMode && (
+                            <aside className="min-h-0 overflow-auto rounded-lg border border-zinc-800 bg-zinc-900 p-3">
+                                <div className="mb-3 flex items-center justify-between text-xs text-zinc-500">
+                                    <span>Files</span>
+                                    <span>{environment?.files?.length || 0}</span>
+                                </div>
+                                <FileManager />
+                            </aside>
+                        )}
 
                         <section className="min-h-0 overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900">
                             <div className="grid h-full grid-cols-8 grid-rows-12">
-                                <FileViewer />
-                                <Console />
+                                <FileViewer
+                                    className={
+                                        showConsole
+                                            ? "col-span-8 row-span-7"
+                                            : "col-span-8 row-span-12"
+                                    }
+                                />
+                                {showConsole && (
+                                    <Console className="col-span-8 row-span-5" />
+                                )}
                             </div>
                         </section>
                     </div>
@@ -305,7 +737,104 @@ export default function EnvironmentPage() {
                         </div>
                     </div>
                 )}
+
+                <Dialog
+                    open={isCommandPaletteOpen}
+                    onOpenChange={setIsCommandPaletteOpen}
+                >
+                    <DialogContent className="max-w-lg">
+                        <DialogHeader>
+                            <DialogTitle>Command palette</DialogTitle>
+                            <DialogDescription>
+                                Keyboard-first actions for faster workflow.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-2">
+                            {commandActions.map((command) => (
+                                <button
+                                    key={command.id}
+                                    type="button"
+                                    disabled={command.disabled}
+                                    onClick={() => {
+                                        command.action();
+                                        setIsCommandPaletteOpen(false);
+                                    }}
+                                    className="flex w-full items-center justify-between rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-left text-sm text-zinc-100 hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    <span>{command.label}</span>
+                                    <span className="text-xs text-zinc-500">
+                                        {command.shortcut}
+                                    </span>
+                                </button>
+                            ))}
+                        </div>
+                    </DialogContent>
+                </Dialog>
+
+                <Dialog
+                    open={isResetConfirmOpen}
+                    onOpenChange={(open) => {
+                        if (!isResettingTemplate) {
+                            setIsResetConfirmOpen(open);
+                        }
+                    }}
+                >
+                    <DialogContent className="max-w-md">
+                        <DialogHeader>
+                            <DialogTitle>Reset environment?</DialogTitle>
+                            <DialogDescription>
+                                This replaces your current files with the assignment
+                                template version.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <DialogFooter>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => setIsResetConfirmOpen(false)}
+                                disabled={isResettingTemplate}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                type="button"
+                                className="bg-red-600 text-white hover:bg-red-700"
+                                disabled={isResettingTemplate}
+                                onClick={async () => {
+                                    await handleResetToTemplate();
+                                    setIsResetConfirmOpen(false);
+                                }}
+                            >
+                                {isResettingTemplate ? (
+                                    <>
+                                        <LoaderCircle className="size-4 animate-spin" />
+                                        Resetting
+                                    </>
+                                ) : (
+                                    "Reset"
+                                )}
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+
+                <div className="pointer-events-none fixed right-4 top-4 z-[70] flex w-full max-w-sm flex-col gap-2">
+                    {metadataError && (
+                        <p className="pointer-events-auto rounded-md border border-red-400/70 bg-red-700 px-3 py-2 text-sm text-red-50 shadow-lg">
+                            {metadataError}
+                        </p>
+                    )}
+                    {infoMessage && (
+                        <p className="pointer-events-auto rounded-md border border-emerald-400/70 bg-emerald-700 px-3 py-2 text-sm text-emerald-50 shadow-lg">
+                            {infoMessage}
+                        </p>
+                    )}
+                </div>
             </main>
         </div>
     );
+}
+
+function cn(...classes) {
+    return classes.filter(Boolean).join(" ");
 }

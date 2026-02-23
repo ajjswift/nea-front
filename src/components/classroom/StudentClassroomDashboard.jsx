@@ -25,6 +25,57 @@ function formatDueLabel(value) {
     return date.toLocaleString();
 }
 
+function getDueUrgency(value) {
+    if (!value) {
+        return null;
+    }
+
+    const dueDate = new Date(value);
+    if (Number.isNaN(dueDate.getTime())) {
+        return null;
+    }
+
+    const now = new Date();
+    const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startTomorrow = new Date(startToday);
+    startTomorrow.setDate(startTomorrow.getDate() + 1);
+    const startDayAfterTomorrow = new Date(startTomorrow);
+    startDayAfterTomorrow.setDate(startDayAfterTomorrow.getDate() + 1);
+    const startInFourDays = new Date(startToday);
+    startInFourDays.setDate(startInFourDays.getDate() + 4);
+
+    if (dueDate.getTime() < now.getTime()) {
+        return { label: "Overdue", tone: "overdue" };
+    }
+    if (dueDate.getTime() < startTomorrow.getTime()) {
+        return { label: "Due today", tone: "today" };
+    }
+    if (dueDate.getTime() < startDayAfterTomorrow.getTime()) {
+        return { label: "Due tomorrow", tone: "tomorrow" };
+    }
+    if (dueDate.getTime() < startInFourDays.getTime()) {
+        return { label: "Due soon", tone: "soon" };
+    }
+
+    return { label: "Upcoming", tone: "upcoming" };
+}
+
+function getDueBadgeClass(tone) {
+    if (tone === "overdue") {
+        return "border-red-400/50 bg-red-500/15 text-red-200";
+    }
+    if (tone === "today") {
+        return "border-amber-400/50 bg-amber-500/15 text-amber-200";
+    }
+    if (tone === "tomorrow") {
+        return "border-yellow-400/50 bg-yellow-500/15 text-yellow-200";
+    }
+    if (tone === "soon") {
+        return "border-sky-400/50 bg-sky-500/15 text-sky-200";
+    }
+    return "border-zinc-600 bg-zinc-800 text-zinc-300";
+}
+
 export default function StudentClassroomDashboard({ initialDashboard = null }) {
     const searchParams = useSearchParams();
     const [dashboard, setDashboard] = useState(
@@ -212,6 +263,9 @@ export default function StudentClassroomDashboard({ initialDashboard = null }) {
                                                       `/classroom?classId=${selectedClass.id}`,
                                                   )}`
                                                 : null;
+                                            const dueUrgency = getDueUrgency(
+                                                assignment.dueAt,
+                                            );
 
                                             return (
                                                 <div
@@ -230,6 +284,17 @@ export default function StudentClassroomDashboard({ initialDashboard = null }) {
                                                             <Clock3 className="size-3" />
                                                             {formatDueLabel(assignment.dueAt)}
                                                         </p>
+                                                        {dueUrgency ? (
+                                                            <p className="mt-2">
+                                                                <span
+                                                                    className={`rounded border px-2 py-0.5 text-xs ${getDueBadgeClass(
+                                                                        dueUrgency.tone,
+                                                                    )}`}
+                                                                >
+                                                                    {dueUrgency.label}
+                                                                </span>
+                                                            </p>
+                                                        ) : null}
                                                     </div>
                                                     {environmentHref ? (
                                                         <Button

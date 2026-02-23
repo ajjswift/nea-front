@@ -94,4 +94,43 @@ export class StudentAssignmentViewModel {
 
         return dateFormatter.format(parsed);
     }
+
+    get dueUrgency() {
+        if (!this.dueAt) {
+            return null;
+        }
+
+        const dueDate = new Date(this.dueAt);
+        if (Number.isNaN(dueDate.getTime())) {
+            return null;
+        }
+
+        const now = new Date();
+        const startToday = new Date(
+            now.getFullYear(),
+            now.getMonth(),
+            now.getDate(),
+        );
+        const startTomorrow = new Date(startToday);
+        startTomorrow.setDate(startTomorrow.getDate() + 1);
+        const startDayAfterTomorrow = new Date(startTomorrow);
+        startDayAfterTomorrow.setDate(startDayAfterTomorrow.getDate() + 1);
+        const startInFourDays = new Date(startToday);
+        startInFourDays.setDate(startInFourDays.getDate() + 4);
+
+        if (dueDate.getTime() < now.getTime()) {
+            return { label: "Overdue", tone: "overdue" };
+        }
+        if (dueDate.getTime() < startTomorrow.getTime()) {
+            return { label: "Due today", tone: "today" };
+        }
+        if (dueDate.getTime() < startDayAfterTomorrow.getTime()) {
+            return { label: "Due tomorrow", tone: "tomorrow" };
+        }
+        if (dueDate.getTime() < startInFourDays.getTime()) {
+            return { label: "Due soon", tone: "soon" };
+        }
+
+        return { label: "Upcoming", tone: "upcoming" };
+    }
 }
