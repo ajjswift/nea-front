@@ -560,7 +560,9 @@ export default function EnvironmentPage() {
                             <span className="inline-flex h-8 items-center gap-1 rounded-md border border-zinc-700 px-3 text-xs text-zinc-300">
                                 <span
                                     className={`size-1.5 rounded-full ${
-                                        isReady ? "bg-emerald-400" : "bg-amber-300"
+                                        isReady
+                                            ? "bg-emerald-400"
+                                            : "bg-amber-300"
                                     }`}
                                 />
                                 {isReady ? "Connected" : "Connecting"}
@@ -574,11 +576,6 @@ export default function EnvironmentPage() {
                                 <span className="inline-flex h-8 items-center rounded-md border border-amber-400/40 bg-amber-500/20 px-3 text-xs text-amber-100">
                                     Concurrent edits merged
                                 </span>
-                            ) : null}
-                            {classHref ? (
-                                <Button asChild size="sm" variant="outline" className="h-8">
-                                    <Link href={classHref}>Open class</Link>
-                                </Button>
                             ) : null}
                             <Button
                                 onClick={handleCopyShareUrl}
@@ -610,7 +607,10 @@ export default function EnvironmentPage() {
                             {isAssignmentEnvironment ? (
                                 <Button
                                     onClick={requestResetToTemplate}
-                                    disabled={!canResetToTemplate || isResettingTemplate}
+                                    disabled={
+                                        !canResetToTemplate ||
+                                        isResettingTemplate
+                                    }
                                     size="sm"
                                     variant="outline"
                                     className="h-8"
@@ -657,20 +657,25 @@ export default function EnvironmentPage() {
                                     <button
                                         key={entry.id}
                                         type="button"
-                                        onClick={() => setFollowStudentId(entry.id)}
+                                        onClick={() =>
+                                            setFollowStudentId(entry.id)
+                                        }
                                         className="rounded border border-zinc-700 bg-zinc-800 px-2 py-0.5 text-zinc-200"
                                     >
                                         {entry.userName}
                                     </button>
                                 ))
                             ) : (
-                                <span className="text-zinc-500">Just you right now</span>
+                                <span className="text-zinc-500">
+                                    Just you right now
+                                </span>
                             )}
                             {followStudentId ? (
                                 <span className="ml-2 inline-flex items-center gap-1 rounded border border-zinc-700 bg-zinc-800 px-2 py-0.5 text-zinc-200">
                                     <LocateFixed className="size-3" />
                                     Following{" "}
-                                    {followedCollaborator?.userName || "student"}
+                                    {followedCollaborator?.userName ||
+                                        "student"}
                                 </span>
                             ) : null}
                             {followStudentId ? (
@@ -706,7 +711,9 @@ export default function EnvironmentPage() {
                             <aside className="min-h-0 overflow-auto rounded-lg border border-zinc-800 bg-zinc-900 p-3">
                                 <div className="mb-3 flex items-center justify-between text-xs text-zinc-500">
                                     <span>Files</span>
-                                    <span>{environment?.files?.length || 0}</span>
+                                    <span>
+                                        {environment?.files?.length || 0}
+                                    </span>
                                 </div>
                                 <FileManager />
                             </aside>
@@ -783,8 +790,8 @@ export default function EnvironmentPage() {
                         <DialogHeader>
                             <DialogTitle>Reset environment?</DialogTitle>
                             <DialogDescription>
-                                This replaces your current files with the assignment
-                                template version.
+                                This replaces your current files with the
+                                assignment template version.
                             </DialogDescription>
                         </DialogHeader>
                         <DialogFooter>
