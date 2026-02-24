@@ -239,7 +239,6 @@ export function EnvironmentManager() {
                 sync: {
                     pendingCount: prev?.sync?.pendingCount || 0,
                     lastSavedAt: prev?.sync?.lastSavedAt || null,
-                    conflictAt: prev?.sync?.conflictAt || null,
                     status: "saved",
                 },
             }));
@@ -280,7 +279,6 @@ export function EnvironmentManager() {
                         sync: {
                             pendingCount: 0,
                             lastSavedAt: prev?.sync?.lastSavedAt || null,
-                            conflictAt: prev?.sync?.conflictAt || null,
                             status: "saved",
                         },
                     }));
@@ -394,11 +392,6 @@ export function EnvironmentManager() {
                     }
 
                     setEnvironment((prev) => {
-                        const isSelfUpdate = Boolean(
-                            fileUpdate?.updatedBy &&
-                                prev?.userId &&
-                                fileUpdate.updatedBy === prev.userId,
-                        );
                         const pendingCount = Number.isFinite(prev?.sync?.pendingCount)
                             ? prev.sync.pendingCount
                             : 0;
@@ -410,10 +403,6 @@ export function EnvironmentManager() {
                             sync: {
                                 pendingCount,
                                 lastSavedAt: prev?.sync?.lastSavedAt || null,
-                                conflictAt:
-                                    !isSelfUpdate
-                                        ? Date.now()
-                                        : prev?.sync?.conflictAt || null,
                                 status: pendingCount > 0 ? "saving" : "saved",
                             },
                         };
@@ -441,7 +430,6 @@ export function EnvironmentManager() {
                                 lastSavedAt: pendingCount === 0
                                     ? updatedAt
                                     : prev?.sync?.lastSavedAt || null,
-                                conflictAt: prev?.sync?.conflictAt || null,
                                 status: pendingCount > 0 ? "saving" : "saved",
                             },
                         };
@@ -596,7 +584,6 @@ export function EnvironmentManager() {
                     sync: {
                         pendingCount: 0,
                         lastSavedAt: prev?.sync?.lastSavedAt || null,
-                        conflictAt: prev?.sync?.conflictAt || null,
                         status: "offline",
                     },
                 };

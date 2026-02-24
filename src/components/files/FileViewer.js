@@ -467,7 +467,6 @@ export function FileViewer({
                 sync: {
                     pendingCount,
                     lastSavedAt: prev?.sync?.lastSavedAt || null,
-                    conflictAt: prev?.sync?.conflictAt || null,
                     status: didSend
                         ? "saving"
                         : prev?.sync?.status || "offline",
@@ -703,7 +702,6 @@ export function FileViewer({
                     sync: {
                         pendingCount,
                         lastSavedAt: prev?.sync?.lastSavedAt || null,
-                        conflictAt: prev?.sync?.conflictAt || null,
                         status: didSend
                             ? "saving"
                             : prev?.sync?.status || "offline",

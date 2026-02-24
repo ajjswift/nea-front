@@ -172,7 +172,6 @@ export default function EnvironmentPage() {
         const pendingCount = Number.isFinite(sync.pendingCount)
             ? sync.pendingCount
             : 0;
-        const conflictAt = Number.isFinite(sync.conflictAt) ? sync.conflictAt : null;
         const lastSavedAt = Number.isFinite(sync.lastSavedAt)
             ? sync.lastSavedAt
             : null;
@@ -201,13 +200,9 @@ export default function EnvironmentPage() {
             statusTone = "text-emerald-200";
         }
 
-        const hasRecentConflict =
-            Boolean(conflictAt) && clockTick - conflictAt < 8000;
-
         return {
             statusLabel,
             statusTone,
-            hasRecentConflict,
         };
     }, [clockTick, environment?.sync, isReady]);
 
@@ -771,11 +766,6 @@ export default function EnvironmentPage() {
                             >
                                 {syncInfo.statusLabel}
                             </span>
-                            {syncInfo.hasRecentConflict ? (
-                                <span className="inline-flex h-8 items-center rounded-md border border-amber-400/40 bg-amber-500/20 px-3 text-xs text-amber-100">
-                                    Concurrent edits merged
-                                </span>
-                            ) : null}
                             <Button
                                 onClick={handleCopyShareUrl}
                                 size="sm"
