@@ -102,7 +102,6 @@ export default function EnvironmentPage() {
         const value = searchParams.get("followStudent");
         return value ? value.trim() : "";
     });
-    const [clockTick, setClockTick] = useState(Date.now());
     const hasSeededInstructionsRef = useRef(false);
     const stopButtonArmTimeoutRef = useRef(null);
     const isReady = environment?.ws?.readyState === 1;
@@ -170,45 +169,6 @@ export default function EnvironmentPage() {
             : accessibility.fontSize === "lg"
               ? 17
               : 15;
-
-    const syncInfo = useMemo(() => {
-        const sync = environment?.sync || {};
-        const pendingCount = Number.isFinite(sync.pendingCount)
-            ? sync.pendingCount
-            : 0;
-        const lastSavedAt = Number.isFinite(sync.lastSavedAt)
-            ? sync.lastSavedAt
-            : null;
-
-        let statusLabel = "Saved";
-        let statusTone = "text-zinc-300";
-        if (!isReady || sync.status === "offline") {
-            statusLabel = "Offline";
-            statusTone = "text-amber-200";
-        } else if (pendingCount > 0 || sync.status === "saving") {
-            statusLabel = "Saving...";
-            statusTone = "text-amber-200";
-        } else if (lastSavedAt) {
-            const elapsedSeconds = Math.max(
-                0,
-                Math.floor((clockTick - lastSavedAt) / 1000),
-            );
-            if (elapsedSeconds < 5) {
-                statusLabel = "Saved just now";
-            } else if (elapsedSeconds < 60) {
-                statusLabel = `Saved ${elapsedSeconds}s ago`;
-            } else {
-                const elapsedMinutes = Math.floor(elapsedSeconds / 60);
-                statusLabel = `Saved ${elapsedMinutes}m ago`;
-            }
-            statusTone = "text-emerald-200";
-        }
-
-        return {
-            statusLabel,
-            statusTone,
-        };
-    }, [clockTick, environment?.sync, isReady]);
 
     const canResetToTemplate = Boolean(environment?.access?.canResetToTemplate);
     const commandActions = [
@@ -582,14 +542,6 @@ export default function EnvironmentPage() {
     }, [accessibility]);
 
     useEffect(() => {
-        const intervalId = setInterval(() => {
-            setClockTick(Date.now());
-        }, 1000);
-
-        return () => clearInterval(intervalId);
-    }, []);
-
-    useEffect(() => {
         const shouldSeedInstructions = searchParams.get("seedInstructions") === "1";
         if (
             !shouldSeedInstructions ||
@@ -809,11 +761,6 @@ export default function EnvironmentPage() {
                                     }`}
                                 />
                                 {isReady ? "Connected" : "Connecting"}
-                            </span>
-                            <span
-                                className={`inline-flex h-8 items-center rounded-md border border-zinc-700 px-3 text-xs ${syncInfo.statusTone}`}
-                            >
-                                {syncInfo.statusLabel}
                             </span>
                             <Button
                                 onClick={handleCopyShareUrl}
