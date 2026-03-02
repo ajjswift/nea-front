@@ -15,6 +15,7 @@ import {
     LoaderCircle,
     LocateFixed,
     RotateCcw,
+    Square,
     SquareTerminal,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -37,6 +38,7 @@ const environmentApiClient = new EnvironmentApiClient();
 const classroomApiClient = new ClassroomApiClient();
 const ACCESSIBILITY_STORAGE_KEY = "environment:accessibility:v1";
 const VIRTUAL_INSTRUCTIONS_FILE_ID = "__virtual_assignment_instructions__";
+const STOP_BUTTON_ARM_DELAY_MS = 650;
 const DEFAULT_ACCESSIBILITY = {
     fontSize: "md",
     highContrast: false,
@@ -64,6 +66,7 @@ export default function EnvironmentPage() {
     const [isFocusMode, setIsFocusMode] = useState(false);
     const [showConsole, setShowConsole] = useState(true);
     const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+    const [isStopButtonArmed, setIsStopButtonArmed] = useState(false);
     const [isResettingTemplate, setIsResettingTemplate] = useState(false);
     const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
     const [isRunningTests, setIsRunningTests] = useState(false);
@@ -101,6 +104,7 @@ export default function EnvironmentPage() {
     });
     const [clockTick, setClockTick] = useState(Date.now());
     const hasSeededInstructionsRef = useRef(false);
+    const stopButtonArmTimeoutRef = useRef(null);
     const isReady = environment?.ws?.readyState === 1;
     const isReadOnlyEnvironment = Boolean(
         environment?.permissions?.readOnlyEnvironment,
@@ -210,10 +214,16 @@ export default function EnvironmentPage() {
     const commandActions = [
         {
             id: "run",
-            label: "Run program",
+            label: isRunning
+                ? isStopButtonArmed
+                    ? "Kill program"
+                    : "Kill program (arming...)"
+                : "Run program",
             shortcut: "Cmd/Ctrl + Enter",
-            disabled: !isReady || isRunning || isMetaLoading || isReadOnlyEnvironment,
-            action: () => runProgram(),
+            disabled: isRunning
+                ? !isReady || isMetaLoading || !isStopButtonArmed
+                : !isReady || isMetaLoading || isReadOnlyEnvironment,
+            action: () => (isRunning ? stopProgram() : runProgram()),
         },
         {
             id: "share",
@@ -291,8 +301,10 @@ export default function EnvironmentPage() {
 
     function runProgram() {
         if (
+            isRunning ||
             isReadOnlyEnvironment ||
             !environment?.ws ||
+            environment.ws.readyState !== 1 ||
             !Array.isArray(environment?.files)
         ) {
             return;
@@ -318,6 +330,18 @@ export default function EnvironmentPage() {
                 environment.consoleRef.current.focus();
             }, 50);
         }
+    }
+
+    function stopProgram() {
+        if (!isRunning || !environment?.ws || environment.ws.readyState !== 1) {
+            return;
+        }
+
+        environment.ws.send(
+            JSON.stringify({
+                type: "killProgram",
+            }),
+        );
     }
 
     async function handleCopyShareUrl() {
@@ -440,6 +464,31 @@ export default function EnvironmentPage() {
             setIsRunning(environment.isRunning);
         }
     }, [environment.isRunning]);
+
+    useEffect(() => {
+        if (stopButtonArmTimeoutRef.current) {
+            clearTimeout(stopButtonArmTimeoutRef.current);
+            stopButtonArmTimeoutRef.current = null;
+        }
+
+        if (!isRunning) {
+            setIsStopButtonArmed(false);
+            return;
+        }
+
+        setIsStopButtonArmed(false);
+        stopButtonArmTimeoutRef.current = setTimeout(() => {
+            setIsStopButtonArmed(true);
+            stopButtonArmTimeoutRef.current = null;
+        }, STOP_BUTTON_ARM_DELAY_MS);
+
+        return () => {
+            if (stopButtonArmTimeoutRef.current) {
+                clearTimeout(stopButtonArmTimeoutRef.current);
+                stopButtonArmTimeoutRef.current = null;
+            }
+        };
+    }, [isRunning]);
 
     useEffect(() => {
         let cancelled = false;
@@ -857,26 +906,31 @@ export default function EnvironmentPage() {
                                 </Button>
                             ) : null}
                             <Button
-                                onClick={runProgram}
+                                onClick={isRunning ? stopProgram : runProgram}
                                 disabled={
-                                    !isReady ||
-                                    isRunning ||
-                                    isMetaLoading ||
-                                    isReadOnlyEnvironment
+                                    isRunning
+                                        ? !isReady || isMetaLoading || !isStopButtonArmed
+                                        : !isReady ||
+                                          isMetaLoading ||
+                                          isReadOnlyEnvironment
                                 }
                                 size="sm"
                                 className="h-8 bg-zinc-100 text-zinc-900 hover:bg-zinc-200"
                             >
                                 {isRunning ? (
                                     <>
-                                        <LoaderCircle
-                                            className={`size-4 ${
-                                                accessibility.reduceMotion
-                                                    ? ""
-                                                    : "animate-spin"
-                                            }`}
-                                        />
-                                        Running
+                                        {isStopButtonArmed ? (
+                                            <Square className="size-4" />
+                                        ) : (
+                                            <LoaderCircle
+                                                className={`size-4 ${
+                                                    accessibility.reduceMotion
+                                                        ? ""
+                                                        : "animate-spin"
+                                                }`}
+                                            />
+                                        )}
+                                        {isStopButtonArmed ? "Kill" : "Starting..."}
                                     </>
                                 ) : (
                                     <>
