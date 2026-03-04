@@ -199,6 +199,13 @@ export default function EnvironmentPage() {
 
     const displayedName = environment?.name || environmentName;
 
+    useEffect(() => {
+        if (typeof document === "undefined") {
+            return;
+        }
+        document.title = displayedName || "Environment";
+    }, [displayedName]);
+
     const collaboratorEntries = useMemo(() => {
         const onlineUsers = Array.isArray(environment?.onlineUsers)
             ? environment.onlineUsers
