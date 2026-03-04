@@ -1,12 +1,11 @@
 "use client";
 
 import { useEnvironment } from "@/layout/EnvironmentLayout";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { FileManager } from "@/components/files/FileManager";
 import { FileViewer } from "@/components/files/FileViewer";
 import { Console } from "@/components/files/Console";
-import { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     ArrowLeft,
     CirclePlay,
@@ -14,6 +13,7 @@ import {
     Focus,
     LoaderCircle,
     LocateFixed,
+    MoreHorizontal,
     RotateCcw,
     Square,
     SquareTerminal,
@@ -28,6 +28,15 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuShortcut,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
     ApiError,
     EnvironmentApiClient,
@@ -50,8 +59,75 @@ function isInstructionsFile(fileName) {
     return (fileName || "").toLowerCase() === "instructions.md";
 }
 
+function getRunStatusModel({ isReady, isRunning, runFeedback }) {
+    const status = runFeedback?.status || "";
+
+    if (!isReady) {
+        return {
+            label: "Offline",
+            toneClass: "text-amber-200 border-amber-400/30 bg-amber-500/10",
+            dotClass: "bg-amber-300",
+        };
+    }
+
+    if (status === "stopping") {
+        return {
+            label: "Stopping",
+            toneClass: "text-orange-200 border-orange-400/30 bg-orange-500/10",
+            dotClass: "bg-orange-300",
+        };
+    }
+
+    if (status === "starting") {
+        return {
+            label: "Starting",
+            toneClass: "text-sky-200 border-sky-400/30 bg-sky-500/10",
+            dotClass: "bg-sky-300",
+        };
+    }
+
+    if (isRunning || status === "running") {
+        return {
+            label: "Running",
+            toneClass: "text-emerald-200 border-emerald-400/30 bg-emerald-500/10",
+            dotClass: "bg-emerald-300",
+        };
+    }
+
+    if (status === "completed") {
+        return {
+            label: "Completed",
+            toneClass: "text-emerald-200 border-emerald-400/30 bg-emerald-500/10",
+            dotClass: "bg-emerald-300",
+        };
+    }
+
+    if (status === "error") {
+        return {
+            label: "Failed",
+            toneClass: "text-red-200 border-red-400/30 bg-red-500/10",
+            dotClass: "bg-red-300",
+        };
+    }
+
+    if (status === "stopped") {
+        return {
+            label: "Stopped",
+            toneClass: "text-zinc-200 border-zinc-500/40 bg-zinc-500/10",
+            dotClass: "bg-zinc-300",
+        };
+    }
+
+    return {
+        label: "Ready",
+        toneClass: "text-zinc-200 border-zinc-500/30 bg-zinc-500/10",
+        dotClass: "bg-zinc-300",
+    };
+}
+
 export default function EnvironmentPage() {
     const params = useParams();
+    const router = useRouter();
     const searchParams = useSearchParams();
     const environmentId = Array.isArray(params.environmentId)
         ? params.environmentId[0]
@@ -121,9 +197,6 @@ export default function EnvironmentPage() {
         return environmentId.slice(0, 8);
     }, [environmentId]);
 
-    const backHref = "/";
-    const backLabel = "Back home";
-
     const displayedName = environment?.name || environmentName;
 
     const collaboratorEntries = useMemo(() => {
@@ -156,6 +229,20 @@ export default function EnvironmentPage() {
 
         return `/classroom?classId=${encodeURIComponent(classId)}`;
     }, [environment?.access?.classId]);
+    const safeReturnTo = useMemo(() => {
+        const returnTo = searchParams.get("returnTo");
+        if (!returnTo) {
+            return null;
+        }
+
+        const normalized = returnTo.trim();
+        return normalized.startsWith("/") ? normalized : null;
+    }, [searchParams]);
+    const backLabel = safeReturnTo
+        ? "Back"
+        : classHref
+          ? "Back to class"
+          : "Back home";
     const assignmentTestCases = useMemo(() => {
         const cases = environment?.access?.testCases;
         return Array.isArray(cases) ? cases : [];
@@ -169,6 +256,15 @@ export default function EnvironmentPage() {
             : accessibility.fontSize === "lg"
               ? 17
               : 15;
+    const runStatusModel = useMemo(
+        () =>
+            getRunStatusModel({
+                isReady,
+                isRunning,
+                runFeedback: environment?.runFeedback,
+            }),
+        [environment?.runFeedback, isReady, isRunning],
+    );
 
     const canResetToTemplate = Boolean(environment?.access?.canResetToTemplate);
     const commandActions = [
@@ -244,6 +340,25 @@ export default function EnvironmentPage() {
         setIsResetConfirmOpen(true);
     }
 
+    const handleBackNavigation = useCallback(() => {
+        if (safeReturnTo) {
+            router.push(safeReturnTo);
+            return;
+        }
+
+        if (typeof window !== "undefined" && window.history.length > 1) {
+            router.back();
+            return;
+        }
+
+        if (classHref) {
+            router.push(classHref);
+            return;
+        }
+
+        router.push("/");
+    }, [classHref, router, safeReturnTo]);
+
     useEffect(() => {
         const nextFollowValue = searchParams.get("followStudent") || "";
         setFollowStudentId(nextFollowValue.trim());
@@ -274,6 +389,14 @@ export default function EnvironmentPage() {
             ...prev,
             console: "",
             isRunning: true,
+            runFeedback: {
+                status: "starting",
+                startedAt: Date.now(),
+                endedAt: null,
+                durationMs: null,
+                exitCode: null,
+                helper: null,
+            },
         }));
 
         environment.ws.send(
@@ -296,6 +419,18 @@ export default function EnvironmentPage() {
         if (!isRunning || !environment?.ws || environment.ws.readyState !== 1) {
             return;
         }
+
+        setEnvironment((prev) => ({
+            ...prev,
+            runFeedback: {
+                status: "stopping",
+                startedAt: prev?.runFeedback?.startedAt || Date.now(),
+                endedAt: null,
+                durationMs: null,
+                exitCode: null,
+                helper: null,
+            },
+        }));
 
         environment.ws.send(
             JSON.stringify({
@@ -730,15 +865,13 @@ export default function EnvironmentPage() {
                     <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 md:px-4">
                         <div className="flex min-w-0 items-center gap-2">
                             <Button
-                                asChild
                                 size="sm"
                                 variant="ghost"
                                 className="text-zinc-300 hover:bg-zinc-800"
+                                onClick={handleBackNavigation}
                             >
-                                <Link href={backHref}>
-                                    <ArrowLeft className="size-4" />
-                                    {backLabel}
-                                </Link>
+                                <ArrowLeft className="size-4" />
+                                {backLabel}
                             </Button>
 
                             <div className="min-w-0">
