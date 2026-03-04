@@ -59,6 +59,33 @@ function getWrappedLineCount(line, maxCharsPerLine) {
     return wrapLogicalLine(line, maxCharsPerLine).length;
 }
 
+function getLogicalRowRange(rows, rowIndex) {
+    if (!Array.isArray(rows) || rowIndex < 0 || rowIndex >= rows.length) {
+        return null;
+    }
+
+    const logicalIndex = rows[rowIndex]?.logicalIndex;
+    if (!Number.isFinite(logicalIndex)) {
+        return null;
+    }
+
+    let start = rowIndex;
+    while (start > 0 && rows[start - 1]?.logicalIndex === logicalIndex) {
+        start -= 1;
+    }
+
+    let end = rowIndex + 1;
+    while (end < rows.length && rows[end]?.logicalIndex === logicalIndex) {
+        end += 1;
+    }
+
+    return {
+        logicalIndex,
+        start,
+        end,
+    };
+}
+
 function formatRunDuration(durationMs) {
     if (!Number.isFinite(durationMs)) {
         return "n/a";
@@ -82,6 +109,8 @@ export function Console({
     const logicalLinesRef = useRef([]);
     const wrappedTailCountRef = useRef(1);
     const lastWrapColumnsRef = useRef(0);
+    const pendingTripleSelectRef = useRef(null);
+    const rowElementMapRef = useRef(new Map());
     const shouldStickToBottomRef = useRef(true);
     const shiftingSegmentRef = useRef(false);
     const segmentStartLineRef = useRef(0);
@@ -91,6 +120,7 @@ export function Console({
     const [isAtTop, setIsAtTop] = useState(true);
     const [isAtBottom, setIsAtBottom] = useState(true);
     const [segmentStartLine, setSegmentStartLine] = useState(0);
+    const [selectedLogicalRowRange, setSelectedLogicalRowRange] = useState(null);
     const [consoleRows, setConsoleRows] = useState([]);
     const runFeedback = environment?.runFeedback || null;
     const helper = runFeedback?.helper || null;
@@ -128,6 +158,8 @@ export function Console({
             logicalLinesRef.current = [];
             wrappedTailCountRef.current = 1;
             lastWrapColumnsRef.current = maxCharsPerVisualLine;
+            pendingTripleSelectRef.current = null;
+            setSelectedLogicalRowRange(null);
             setConsoleRows([]);
             return;
         }
@@ -238,7 +270,22 @@ export function Console({
         segmentEndLine,
         lastVisibleLine + VIRTUAL_OVERSCAN_LINES,
     );
-    const visibleRows = consoleRows.slice(visibleStart, visibleEnd);
+    const selectionStart =
+        selectedLogicalRowRange?.start ?? Number.POSITIVE_INFINITY;
+    const selectionEnd =
+        selectedLogicalRowRange?.end ?? Number.NEGATIVE_INFINITY;
+    const visibleStartWithSelection = Math.max(
+        segmentStartLine,
+        Math.min(visibleStart, selectionStart),
+    );
+    const visibleEndWithSelection = Math.min(
+        segmentEndLine,
+        Math.max(visibleEnd, selectionEnd),
+    );
+    const visibleRows = consoleRows.slice(
+        visibleStartWithSelection,
+        visibleEndWithSelection,
+    );
     const topSpacerHeight = (visibleStart - segmentStartLine) * lineHeightPx;
     const bottomSpacerHeight = Math.max(
         0,
@@ -303,6 +350,18 @@ export function Console({
     }, [segmentStartLine]);
 
     useEffect(() => {
+        if (!selectedLogicalRowRange) {
+            return;
+        }
+
+        if (selectedLogicalRowRange.end <= totalRowCount) {
+            return;
+        }
+
+        setSelectedLogicalRowRange(null);
+    }, [selectedLogicalRowRange, totalRowCount]);
+
+    useEffect(() => {
         setSegmentStartLine((prevStart) => {
             if (totalRowCount === 0) {
                 return 0;
@@ -352,6 +411,36 @@ export function Console({
             consoleRef: inputRef,
         }));
     }, [setEnvironment]);
+
+    useEffect(() => {
+        const pendingRange = pendingTripleSelectRef.current;
+        if (!pendingRange || typeof window === "undefined") {
+            return;
+        }
+
+        const startElement = rowElementMapRef.current.get(pendingRange.start);
+        const endElement = rowElementMapRef.current.get(pendingRange.end - 1);
+        if (!startElement || !endElement) {
+            return;
+        }
+
+        const startTextNode = startElement.querySelector("[data-row-text]");
+        const endTextNode = endElement.querySelector("[data-row-text]");
+        if (!startTextNode || !endTextNode) {
+            return;
+        }
+
+        const range = document.createRange();
+        const startNode = startTextNode.firstChild || startTextNode;
+        const endNode = endTextNode.firstChild || endTextNode;
+        range.setStart(startNode, 0);
+        range.setEnd(endNode, (endNode.textContent || "").length);
+
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+        pendingTripleSelectRef.current = null;
+    }, [visibleStartWithSelection, visibleEndWithSelection, consoleRows]);
 
     const handleSubmit = (e) => {
         e.preventDefault();
@@ -415,6 +504,45 @@ export function Console({
         }));
     };
 
+    const handleRowClick = useCallback(
+        (event, rowIndex) => {
+            if (event.detail !== 3) {
+                return;
+            }
+
+            const rowRange = getLogicalRowRange(consoleRows, rowIndex);
+            if (!rowRange) {
+                return;
+            }
+
+            event.preventDefault();
+            setSelectedLogicalRowRange(rowRange);
+            pendingTripleSelectRef.current = rowRange;
+
+            const currentSegmentStart = segmentStartLineRef.current;
+            const currentSegmentEnd = Math.min(
+                totalRowCount,
+                currentSegmentStart + SEGMENT_MAX_LINES,
+            );
+
+            if (
+                rowRange.start < currentSegmentStart ||
+                rowRange.end > currentSegmentEnd
+            ) {
+                const targetSegmentStart = Math.max(
+                    0,
+                    Math.min(
+                        rowRange.start,
+                        totalRowCount - SEGMENT_MAX_LINES,
+                    ),
+                );
+                segmentStartLineRef.current = targetSegmentStart;
+                setSegmentStartLine(targetSegmentStart);
+            }
+        },
+        [consoleRows, totalRowCount],
+    );
+
     const handleOutputScroll = useCallback((event) => {
         if (shiftingSegmentRef.current) {
             return;
@@ -445,6 +573,7 @@ export function Console({
             shiftingSegmentRef.current = true;
             segmentStartLineRef.current = nextSegmentStart;
             setSegmentStartLine(nextSegmentStart);
+            setSelectedLogicalRowRange(null);
 
             requestAnimationFrame(() => {
                 if (outputRef.current) {
@@ -547,6 +676,7 @@ export function Console({
         const nextSegmentStart = 0;
         segmentStartLineRef.current = nextSegmentStart;
         setSegmentStartLine(nextSegmentStart);
+        setSelectedLogicalRowRange(null);
         shouldStickToBottomRef.current = false;
 
         requestAnimationFrame(() => {
@@ -639,13 +769,33 @@ export function Console({
                     ) : (
                         <div
                             style={{
-                                paddingTop: `${topSpacerHeight}px`,
-                                paddingBottom: `${bottomSpacerHeight}px`,
+                                paddingTop: `${Math.max(
+                                    0,
+                                    (visibleStartWithSelection - segmentStartLine) *
+                                        lineHeightPx,
+                                )}px`,
+                                paddingBottom: `${Math.max(
+                                    0,
+                                    (segmentEndLine - visibleEndWithSelection) *
+                                        lineHeightPx,
+                                )}px`,
                             }}
                         >
-                            {visibleRows.map((row, index) => (
+                            {visibleRows.map((row, index) => {
+                                const rowIndex = visibleStartWithSelection + index;
+                                return (
                                 <div
-                                    key={visibleStart + index}
+                                    key={rowIndex}
+                                    ref={(node) => {
+                                        if (node) {
+                                            rowElementMapRef.current.set(rowIndex, node);
+                                        } else {
+                                            rowElementMapRef.current.delete(rowIndex);
+                                        }
+                                    }}
+                                    onClick={(event) =>
+                                        handleRowClick(event, rowIndex)
+                                    }
                                     className="flex items-start"
                                     style={{
                                         minHeight: `${lineHeightPx}px`,
@@ -662,11 +812,15 @@ export function Console({
                                             ? (row.logicalIndex + 1).toLocaleString()
                                             : "\u00A0"}
                                     </span>
-                                    <span className="whitespace-pre">
+                                    <span
+                                        className="whitespace-pre"
+                                        data-row-text="true"
+                                    >
                                         {row.text.length > 0 ? row.text : "\u00A0"}
                                     </span>
                                 </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     )}
                 </div>

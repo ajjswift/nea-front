@@ -47,15 +47,6 @@ const ANON_NOUNS = [
     "Badger",
 ];
 
-function unauthorizedResponse() {
-    return NextResponse.json(
-        {
-            error: "Authentication required.",
-        },
-        { status: 401 },
-    );
-}
-
 function missingTableResponse() {
     return NextResponse.json(
         {
@@ -182,14 +173,9 @@ export async function GET(request, { params }) {
         }
 
         const isAssignmentEnvironment = Boolean(assignmentContext);
-        const anonymousViewer =
-            !user && isAssignmentEnvironment
-                ? getAnonymousViewerFromRequest(request)
-                : null;
-
-        if (!user && !anonymousViewer) {
-            return unauthorizedResponse();
-        }
+        const anonymousViewer = !user
+            ? getAnonymousViewerFromRequest(request)
+            : null;
 
         let environment = null;
         if (user) {
@@ -216,6 +202,10 @@ export async function GET(request, { params }) {
                 if (canAccess) {
                     environment = await environmentRepository.findById(environmentId);
                 }
+            }
+
+            if (!environment) {
+                environment = await environmentRepository.findById(environmentId);
             }
 
             if (!environment) {
