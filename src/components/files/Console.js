@@ -12,6 +12,52 @@ const AUTO_SCROLL_TOP_THRESHOLD_PX = 24;
 const SEGMENT_MAX_LINES = 200_000;
 const SEGMENT_SHIFT_LINES = 50_000;
 const LARGE_LOG_TOP_JUMP_THRESHOLD = 25_000;
+const CONSOLE_HORIZONTAL_PADDING_PX = 32;
+const MONOSPACE_CHAR_WIDTH_RATIO = 0.62;
+
+function wrapLogicalLine(line, maxCharsPerLine) {
+    const value = typeof line === "string" ? line : `${line ?? ""}`;
+    if (maxCharsPerLine <= 0 || value.length <= maxCharsPerLine) {
+        return [value];
+    }
+
+    const wrapped = [];
+    for (let index = 0; index < value.length; index += maxCharsPerLine) {
+        wrapped.push(value.slice(index, index + maxCharsPerLine));
+    }
+    return wrapped;
+}
+
+function wrapLogicalLineToRows(line, maxCharsPerLine, logicalIndex) {
+    const chunks = wrapLogicalLine(line, maxCharsPerLine);
+    return chunks.map((chunk, chunkIndex) => ({
+        text: chunk,
+        logicalIndex,
+        isLogicalStart: chunkIndex === 0,
+    }));
+}
+
+function wrapAllLogicalLinesToRows(lines, maxCharsPerLine) {
+    if (!Array.isArray(lines) || lines.length === 0) {
+        return [];
+    }
+
+    const wrappedRows = [];
+    for (let logicalIndex = 0; logicalIndex < lines.length; logicalIndex += 1) {
+        wrappedRows.push(
+            ...wrapLogicalLineToRows(
+                lines[logicalIndex],
+                maxCharsPerLine,
+                logicalIndex,
+            ),
+        );
+    }
+    return wrappedRows;
+}
+
+function getWrappedLineCount(line, maxCharsPerLine) {
+    return wrapLogicalLine(line, maxCharsPerLine).length;
+}
 
 function formatRunDuration(durationMs) {
     if (!Number.isFinite(durationMs)) {
@@ -33,15 +79,19 @@ export function Console({
     const outputRef = useRef(null);
     const inputRef = useRef(null);
     const previousConsoleRef = useRef("");
+    const logicalLinesRef = useRef([]);
+    const wrappedTailCountRef = useRef(1);
+    const lastWrapColumnsRef = useRef(0);
     const shouldStickToBottomRef = useRef(true);
     const shiftingSegmentRef = useRef(false);
     const segmentStartLineRef = useRef(0);
     const [scrollTop, setScrollTop] = useState(0);
     const [viewportHeight, setViewportHeight] = useState(0);
+    const [viewportWidth, setViewportWidth] = useState(0);
     const [isAtTop, setIsAtTop] = useState(true);
     const [isAtBottom, setIsAtBottom] = useState(true);
     const [segmentStartLine, setSegmentStartLine] = useState(0);
-    const [consoleLines, setConsoleLines] = useState([]);
+    const [consoleRows, setConsoleRows] = useState([]);
     const runFeedback = environment?.runFeedback || null;
     const helper = runFeedback?.helper || null;
     const isReadOnlyEnvironment = Boolean(
@@ -50,20 +100,53 @@ export function Console({
     const canSendInput = Boolean(environment.isRunning && !isReadOnlyEnvironment);
     const normalizedFontSize = Math.max(12, Number(fontSize) || 14);
     const lineHeightPx = Math.max(18, Math.round(normalizedFontSize * 1.45));
+    const logicalLineDigitsEstimate = Math.max(
+        2,
+        `${Math.max(1, logicalLinesRef.current.length)}`.length,
+    );
+    const reservedGutterChars = logicalLineDigitsEstimate + 2;
+    const maxCharsPerVisualLine = Math.max(
+        20,
+        Math.floor(
+            Math.max(0, viewportWidth - CONSOLE_HORIZONTAL_PADDING_PX) /
+                Math.max(1, normalizedFontSize * MONOSPACE_CHAR_WIDTH_RATIO),
+        ) - reservedGutterChars,
+    );
     const consoleText = environment.console || "";
 
     useEffect(() => {
         const previousConsole = previousConsoleRef.current;
+        const wrapColumnsChanged =
+            lastWrapColumnsRef.current !== maxCharsPerVisualLine;
+        const shouldRebuildAll =
+            wrapColumnsChanged ||
+            !previousConsole ||
+            !consoleText.startsWith(previousConsole);
 
         if (!consoleText) {
             previousConsoleRef.current = "";
-            setConsoleLines([]);
+            logicalLinesRef.current = [];
+            wrappedTailCountRef.current = 1;
+            lastWrapColumnsRef.current = maxCharsPerVisualLine;
+            setConsoleRows([]);
             return;
         }
 
-        if (!previousConsole || !consoleText.startsWith(previousConsole)) {
+        if (shouldRebuildAll) {
+            const rebuiltLogicalLines = consoleText.split("\n");
             previousConsoleRef.current = consoleText;
-            setConsoleLines(consoleText.split("\n"));
+            logicalLinesRef.current = rebuiltLogicalLines;
+            wrappedTailCountRef.current = getWrappedLineCount(
+                rebuiltLogicalLines[rebuiltLogicalLines.length - 1] ?? "",
+                maxCharsPerVisualLine,
+            );
+            lastWrapColumnsRef.current = maxCharsPerVisualLine;
+            setConsoleRows(
+                wrapAllLogicalLinesToRows(
+                    rebuiltLogicalLines,
+                    maxCharsPerVisualLine,
+                ),
+            );
             return;
         }
 
@@ -73,29 +156,75 @@ export function Console({
         }
 
         previousConsoleRef.current = consoleText;
-        setConsoleLines((prevLines) => {
-            if (prevLines.length === 0) {
-                return consoleText.split("\n");
+        lastWrapColumnsRef.current = maxCharsPerVisualLine;
+
+        const appendedParts = appendedChunk.split("\n");
+        const nextLogicalLines =
+            logicalLinesRef.current.length > 0 ? [...logicalLinesRef.current] : [""];
+        const lastLogicalIndex = nextLogicalLines.length - 1;
+
+        nextLogicalLines[lastLogicalIndex] =
+            `${nextLogicalLines[lastLogicalIndex] ?? ""}${appendedParts[0] ?? ""}`;
+
+        for (let index = 1; index < appendedParts.length; index += 1) {
+            nextLogicalLines.push(appendedParts[index] ?? "");
+        }
+
+        logicalLinesRef.current = nextLogicalLines;
+
+        setConsoleRows((prevWrappedRows) => {
+            if (prevWrappedRows.length === 0) {
+                return wrapAllLogicalLinesToRows(
+                    nextLogicalLines,
+                    maxCharsPerVisualLine,
+                );
             }
 
-            const nextLines = [...prevLines];
-            const appendedParts = appendedChunk.split("\n");
-            nextLines[nextLines.length - 1] =
-                `${nextLines[nextLines.length - 1] || ""}${appendedParts[0]}`;
-
-            for (let index = 1; index < appendedParts.length; index += 1) {
-                nextLines.push(appendedParts[index]);
+            const nextWrappedRows = [...prevWrappedRows];
+            const previousTailCount = Math.max(1, wrappedTailCountRef.current || 1);
+            if (nextWrappedRows.length >= previousTailCount) {
+                nextWrappedRows.splice(
+                    nextWrappedRows.length - previousTailCount,
+                    previousTailCount,
+                );
+            } else {
+                nextWrappedRows.length = 0;
             }
 
-            return nextLines;
+            const firstUpdatedLogicalIndex =
+                nextLogicalLines.length - appendedParts.length;
+            for (
+                let logicalIndex = firstUpdatedLogicalIndex;
+                logicalIndex < nextLogicalLines.length;
+                logicalIndex += 1
+            ) {
+                const wrapped = wrapLogicalLineToRows(
+                    nextLogicalLines[logicalIndex],
+                    maxCharsPerVisualLine,
+                    logicalIndex,
+                );
+                nextWrappedRows.push(...wrapped);
+            }
+
+            wrappedTailCountRef.current = getWrappedLineCount(
+                nextLogicalLines[nextLogicalLines.length - 1] ?? "",
+                maxCharsPerVisualLine,
+            );
+
+            return nextWrappedRows;
         });
-    }, [consoleText]);
-    const totalLineCount = consoleLines.length;
+    }, [consoleText, maxCharsPerVisualLine]);
+    const totalRowCount = consoleRows.length;
+    const totalLogicalLineCount = logicalLinesRef.current.length;
+    const lineNumberDigits = Math.max(
+        2,
+        `${Math.max(1, totalLogicalLineCount)}`.length,
+    );
     const segmentEndLine = Math.min(
-        totalLineCount,
+        totalRowCount,
         segmentStartLine + SEGMENT_MAX_LINES,
     );
-    const maxSegmentStartLine = Math.max(0, totalLineCount - SEGMENT_MAX_LINES);
+    const maxSegmentStartLine = Math.max(0, totalRowCount - SEGMENT_MAX_LINES);
     const segmentEdgeThresholdPx = lineHeightPx * (VIRTUAL_OVERSCAN_LINES / 2);
     const firstVisibleLine =
         segmentStartLine + Math.floor(scrollTop / lineHeightPx);
@@ -109,17 +238,26 @@ export function Console({
         segmentEndLine,
         lastVisibleLine + VIRTUAL_OVERSCAN_LINES,
     );
-    const visibleLines = consoleLines.slice(visibleStart, visibleEnd);
+    const visibleRows = consoleRows.slice(visibleStart, visibleEnd);
     const topSpacerHeight = (visibleStart - segmentStartLine) * lineHeightPx;
     const bottomSpacerHeight = Math.max(
         0,
         (segmentEndLine - visibleEnd) * lineHeightPx,
     );
-    const currentLineIndicator = totalLineCount
-        ? Math.min(totalLineCount, Math.max(1, firstVisibleLine + 1))
+    const currentVisibleLogicalLine = visibleRows[0]?.logicalIndex;
+    const currentLineIndicator = totalLogicalLineCount
+        ? Math.min(
+              totalLogicalLineCount,
+              Math.max(
+                  1,
+                  (Number.isFinite(currentVisibleLogicalLine)
+                      ? currentVisibleLogicalLine
+                      : 0) + 1,
+              ),
+          )
         : 0;
     const showJumpToTop =
-        totalLineCount >= LARGE_LOG_TOP_JUMP_THRESHOLD && !isAtTop;
+        totalLogicalLineCount >= LARGE_LOG_TOP_JUMP_THRESHOLD && !isAtTop;
 
     const isElementAtTop = useCallback(
         (element, segmentStart = segmentStartLineRef.current) => {
@@ -137,12 +275,12 @@ export function Console({
                 element.scrollHeight - (element.scrollTop + element.clientHeight) <=
                 AUTO_SCROLL_THRESHOLD_PX;
             const segmentEnd = Math.min(
-                totalLineCount,
+                totalRowCount,
                 segmentStart + SEGMENT_MAX_LINES,
             );
-            return localAtBottom && segmentEnd >= totalLineCount;
+            return localAtBottom && segmentEnd >= totalRowCount;
         },
-        [totalLineCount],
+        [totalRowCount],
     );
 
     // Auto-scroll to bottom when new output arrives
@@ -166,7 +304,7 @@ export function Console({
 
     useEffect(() => {
         setSegmentStartLine((prevStart) => {
-            if (totalLineCount === 0) {
+            if (totalRowCount === 0) {
                 return 0;
             }
 
@@ -176,7 +314,7 @@ export function Console({
 
             return Math.min(prevStart, maxSegmentStartLine);
         });
-    }, [maxSegmentStartLine, totalLineCount]);
+    }, [maxSegmentStartLine, totalRowCount]);
 
     useEffect(() => {
         if (!outputRef.current) {
@@ -186,6 +324,7 @@ export function Console({
         const element = outputRef.current;
         const updateViewport = () => {
             setViewportHeight(element.clientHeight);
+            setViewportWidth(element.clientWidth);
             setScrollTop(element.scrollTop);
             const atTop = isElementAtTop(element);
             const atBottom = isElementAtBottom(element);
@@ -291,7 +430,7 @@ export function Console({
 
         const currentSegmentStart = segmentStartLineRef.current;
         const currentSegmentEnd = Math.min(
-            totalLineCount,
+            totalRowCount,
             currentSegmentStart + SEGMENT_MAX_LINES,
         );
 
@@ -329,13 +468,13 @@ export function Console({
         }
 
         if (
-            currentSegmentEnd < totalLineCount &&
+            currentSegmentEnd < totalRowCount &&
             element.scrollTop + element.clientHeight >=
                 element.scrollHeight - segmentEdgeThresholdPx
         ) {
             const shiftLines = Math.min(
                 SEGMENT_SHIFT_LINES,
-                totalLineCount - currentSegmentEnd,
+                totalRowCount - currentSegmentEnd,
             );
             const nextSegmentStart = currentSegmentStart + shiftLines;
             const nextScrollTop = Math.max(
@@ -371,7 +510,7 @@ export function Console({
         isElementAtTop,
         lineHeightPx,
         segmentEdgeThresholdPx,
-        totalLineCount,
+        totalRowCount,
     ]);
 
     const handleJumpToBottom = useCallback(() => {
@@ -379,7 +518,7 @@ export function Console({
             return;
         }
 
-        const nextSegmentStart = Math.max(0, totalLineCount - SEGMENT_MAX_LINES);
+        const nextSegmentStart = Math.max(0, totalRowCount - SEGMENT_MAX_LINES);
         segmentStartLineRef.current = nextSegmentStart;
         setSegmentStartLine(nextSegmentStart);
 
@@ -398,7 +537,7 @@ export function Console({
             setIsAtBottom(atBottom);
             setScrollTop(outputRef.current.scrollTop);
         });
-    }, [isElementAtBottom, isElementAtTop, totalLineCount]);
+    }, [isElementAtBottom, isElementAtTop, totalRowCount]);
 
     const handleJumpToTop = useCallback(() => {
         if (!outputRef.current) {
@@ -495,7 +634,7 @@ export function Console({
                         fontSize: `${normalizedFontSize}px`,
                     }}
                 >
-                    {totalLineCount === 0 ? (
+                    {totalRowCount === 0 ? (
                         "No output yet. Run your program to see output here."
                     ) : (
                         <div
@@ -504,27 +643,39 @@ export function Console({
                                 paddingBottom: `${bottomSpacerHeight}px`,
                             }}
                         >
-                            {visibleLines.map((line, index) => (
+                            {visibleRows.map((row, index) => (
                                 <div
                                     key={visibleStart + index}
-                                    className="whitespace-pre"
+                                    className="flex items-start"
                                     style={{
                                         minHeight: `${lineHeightPx}px`,
                                         lineHeight: `${lineHeightPx}px`,
                                     }}
                                 >
-                                    {line.length > 0 ? line : "\u00A0"}
+                                    <span
+                                        className="shrink-0 select-none pr-3 text-right text-zinc-500"
+                                        style={{
+                                            width: `${lineNumberDigits + 1}ch`,
+                                        }}
+                                    >
+                                        {row.isLogicalStart
+                                            ? (row.logicalIndex + 1).toLocaleString()
+                                            : "\u00A0"}
+                                    </span>
+                                    <span className="whitespace-pre">
+                                        {row.text.length > 0 ? row.text : "\u00A0"}
+                                    </span>
                                 </div>
                             ))}
                         </div>
                     )}
                 </div>
 
-                {totalLineCount > 0 ? (
+                {totalRowCount > 0 ? (
                     <div className="pointer-events-none absolute bottom-3 right-3 flex items-end gap-2">
                         <div className="pointer-events-auto rounded-full border border-zinc-700/80 bg-zinc-900/90 px-2.5 py-1 text-[11px] text-zinc-300 shadow-sm backdrop-blur-sm">
                             Line {currentLineIndicator.toLocaleString()} of{" "}
-                            {totalLineCount.toLocaleString()}
+                            {totalLogicalLineCount.toLocaleString()}
                         </div>
                         <div className="pointer-events-auto flex flex-col gap-1.5">
                             {showJumpToTop ? (
