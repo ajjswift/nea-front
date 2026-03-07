@@ -13,7 +13,6 @@ import {
     Focus,
     LoaderCircle,
     LocateFixed,
-    MoreHorizontal,
     RotateCcw,
     Square,
     SquareTerminal,
@@ -28,15 +27,6 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuLabel,
-    DropdownMenuSeparator,
-    DropdownMenuShortcut,
-    DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
     ApiError,
     EnvironmentApiClient,
@@ -59,70 +49,44 @@ function isInstructionsFile(fileName) {
     return (fileName || "").toLowerCase() === "instructions.md";
 }
 
-function getRunStatusModel({ isReady, isRunning, runFeedback }) {
-    const status = runFeedback?.status || "";
+function getSubmissionStatusModel(status) {
+    switch (status) {
+        case "submitted":
+            return {
+                label: "Submitted",
+                toneClass:
+                    "text-emerald-200 border-emerald-400/30 bg-emerald-500/10",
+            };
+        case "needs_changes":
+            return {
+                label: "Needs changes",
+                toneClass:
+                    "text-amber-200 border-amber-400/30 bg-amber-500/10",
+            };
+        case "in_progress":
+            return {
+                label: "In progress",
+                toneClass: "text-sky-200 border-sky-400/30 bg-sky-500/10",
+            };
+        default:
+            return {
+                label: "Not started",
+                toneClass: "text-zinc-200 border-zinc-500/30 bg-zinc-500/10",
+            };
+    }
+}
 
-    if (!isReady) {
-        return {
-            label: "Offline",
-            toneClass: "text-amber-200 border-amber-400/30 bg-amber-500/10",
-            dotClass: "bg-amber-300",
-        };
+function formatDateTime(value) {
+    if (!value) {
+        return null;
     }
 
-    if (status === "stopping") {
-        return {
-            label: "Stopping",
-            toneClass: "text-orange-200 border-orange-400/30 bg-orange-500/10",
-            dotClass: "bg-orange-300",
-        };
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+        return null;
     }
 
-    if (status === "starting") {
-        return {
-            label: "Starting",
-            toneClass: "text-sky-200 border-sky-400/30 bg-sky-500/10",
-            dotClass: "bg-sky-300",
-        };
-    }
-
-    if (isRunning || status === "running") {
-        return {
-            label: "Running",
-            toneClass: "text-emerald-200 border-emerald-400/30 bg-emerald-500/10",
-            dotClass: "bg-emerald-300",
-        };
-    }
-
-    if (status === "completed") {
-        return {
-            label: "Completed",
-            toneClass: "text-emerald-200 border-emerald-400/30 bg-emerald-500/10",
-            dotClass: "bg-emerald-300",
-        };
-    }
-
-    if (status === "error") {
-        return {
-            label: "Failed",
-            toneClass: "text-red-200 border-red-400/30 bg-red-500/10",
-            dotClass: "bg-red-300",
-        };
-    }
-
-    if (status === "stopped") {
-        return {
-            label: "Stopped",
-            toneClass: "text-zinc-200 border-zinc-500/40 bg-zinc-500/10",
-            dotClass: "bg-zinc-300",
-        };
-    }
-
-    return {
-        label: "Ready",
-        toneClass: "text-zinc-200 border-zinc-500/30 bg-zinc-500/10",
-        dotClass: "bg-zinc-300",
-    };
+    return parsed.toLocaleString();
 }
 
 export default function EnvironmentPage() {
@@ -149,6 +113,14 @@ export default function EnvironmentPage() {
     const [isHelpDialogOpen, setIsHelpDialogOpen] = useState(false);
     const [helpMessage, setHelpMessage] = useState("");
     const [isSendingHelp, setIsSendingHelp] = useState(false);
+    const [isSubmissionUpdating, setIsSubmissionUpdating] = useState(false);
+    const [isFeedbackDialogOpen, setIsFeedbackDialogOpen] = useState(false);
+    const [isSavingFeedback, setIsSavingFeedback] = useState(false);
+    const [feedbackDraft, setFeedbackDraft] = useState({
+        fileName: "",
+        lineNumber: "",
+        content: "",
+    });
     const [isAccessibilityOpen, setIsAccessibilityOpen] = useState(false);
     const [accessibility, setAccessibility] = useState(() => {
         if (typeof window === "undefined") {
@@ -188,6 +160,30 @@ export default function EnvironmentPage() {
         environment?.access?.isAssignmentEnvironment,
     );
     const isStudentViewer = environment?.access?.viewerRole === "student";
+    const submissionStatus = environment?.access?.submissionStatus || "not_started";
+    const submissionStatusModel = useMemo(
+        () => getSubmissionStatusModel(submissionStatus),
+        [submissionStatus],
+    );
+    const latestTestRun =
+        environment?.access?.latestTestRun &&
+        typeof environment.access.latestTestRun === "object"
+            ? environment.access.latestTestRun
+            : { summary: { total: 0, passed: 0, failed: 0 }, results: [] };
+    const teacherComments = Array.isArray(environment?.access?.teacherComments)
+        ? environment.access.teacherComments
+        : [];
+    const canManageTeacherComments = Boolean(
+        environment?.access?.canManageTeacherComments,
+    );
+    const canUpdateSubmissionStatus = Boolean(
+        environment?.access?.canUpdateSubmissionStatus,
+    );
+    const currentFile = Array.isArray(environment?.files)
+        ? environment.files.find((file) => file.id === environment?.currentFile) ||
+          environment.files[0] ||
+          null
+        : null;
 
     const shortEnvironmentId = useMemo(() => {
         if (!environmentId) {
@@ -263,17 +259,16 @@ export default function EnvironmentPage() {
             : accessibility.fontSize === "lg"
               ? 17
               : 15;
-    const runStatusModel = useMemo(
-        () =>
-            getRunStatusModel({
-                isReady,
-                isRunning,
-                runFeedback: environment?.runFeedback,
-            }),
-        [environment?.runFeedback, isReady, isRunning],
-    );
-
     const canResetToTemplate = Boolean(environment?.access?.canResetToTemplate);
+    const canStudentSubmit = Boolean(
+        canUpdateSubmissionStatus && isStudentViewer && isAssignmentEnvironment,
+    );
+    const canTeacherReviewSubmission = Boolean(
+        canUpdateSubmissionStatus &&
+            environment?.access?.viewerRole === "teacher" &&
+            isAssignmentEnvironment,
+    );
+    const isSubmittedAssignment = submissionStatus === "submitted";
     const commandActions = [
         {
             id: "run",
@@ -455,6 +450,35 @@ export default function EnvironmentPage() {
         }
     }
 
+    function updateEnvironmentAccess(patch) {
+        setEnvironment((prev) => ({
+            ...prev,
+            access: {
+                ...(prev?.access || {}),
+                ...patch,
+            },
+        }));
+    }
+
+    function jumpToFeedbackComment(comment) {
+        const files = Array.isArray(environment?.files) ? environment.files : [];
+        const targetFile =
+            files.find((file) => file?.name === comment?.fileName) || null;
+        if (!targetFile) {
+            return;
+        }
+
+        setEnvironment((prev) => ({
+            ...prev,
+            currentFile: targetFile.id,
+            editorJump: {
+                line: Number(comment?.lineNumber) || 1,
+                column: 1,
+                at: `${targetFile.id}:${comment?.lineNumber || 1}:${Date.now()}`,
+            },
+        }));
+    }
+
     async function handleRunAssignmentTests() {
         if (!environmentId || !assignmentTestCases.length) {
             return;
@@ -472,6 +496,13 @@ export default function EnvironmentPage() {
                 },
             );
             const summary = payload?.summary || {};
+            updateEnvironmentAccess({
+                latestTestRun: payload,
+                submissionStatus:
+                    submissionStatus === "not_started"
+                        ? "in_progress"
+                        : submissionStatus,
+            });
             setInfoMessage(
                 `Tests complete: ${summary.passed || 0}/${summary.total || 0} passed.`,
             );
@@ -479,6 +510,91 @@ export default function EnvironmentPage() {
             setMetadataError(error?.message || "Could not run assignment tests.");
         } finally {
             setIsRunningTests(false);
+        }
+    }
+
+    async function handleUpdateSubmissionStatus(nextStatus) {
+        if (!environmentId || !canUpdateSubmissionStatus) {
+            return;
+        }
+
+        setIsSubmissionUpdating(true);
+        setMetadataError("");
+        setInfoMessage("");
+
+        try {
+            const payload = await environmentApiClient.updateAssignmentSubmission(
+                environmentId,
+                { status: nextStatus },
+            );
+            const submission = payload?.submission || null;
+            updateEnvironmentAccess({
+                submissionStatus:
+                    submission?.submissionStatus || nextStatus || submissionStatus,
+                submissionUpdatedAt: submission?.submissionUpdatedAt || null,
+                submittedAt: submission?.submittedAt || null,
+                reviewedAt: submission?.reviewedAt || null,
+                latestTestRun:
+                    submission?.latestTestRun || environment?.access?.latestTestRun,
+            });
+            setEnvironment((prev) => ({
+                ...prev,
+                permissions: {
+                    ...(prev?.permissions || {}),
+                    readOnlyEnvironment: Boolean(
+                        isStudentViewer &&
+                            (submission?.submissionStatus || nextStatus) ===
+                                "submitted",
+                    ),
+                },
+            }));
+            setInfoMessage(
+                nextStatus === "submitted"
+                    ? "Assignment marked as done."
+                    : nextStatus === "needs_changes"
+                      ? "Marked as needs changes."
+                      : nextStatus === "in_progress" && submissionStatus === "submitted"
+                        ? "Done mark removed."
+                        : "Submission status updated.",
+            );
+        } catch (error) {
+            setMetadataError(error?.message || "Could not update submission status.");
+        } finally {
+            setIsSubmissionUpdating(false);
+        }
+    }
+
+    async function handleCreateTeacherComment() {
+        if (!environmentId || !canManageTeacherComments) {
+            return;
+        }
+
+        setIsSavingFeedback(true);
+        setMetadataError("");
+        setInfoMessage("");
+
+        try {
+            const payload = await environmentApiClient.createTeacherFeedbackComment(
+                environmentId,
+                {
+                    fileName: feedbackDraft.fileName,
+                    lineNumber: Number(feedbackDraft.lineNumber),
+                    content: feedbackDraft.content,
+                },
+            );
+            const comments = Array.isArray(payload?.comments) ? payload.comments : [];
+            updateEnvironmentAccess({ teacherComments: comments });
+            setInfoMessage("Teacher comment added.");
+            setIsFeedbackDialogOpen(false);
+            setFeedbackDraft({
+                fileName: currentFile?.name || "",
+                lineNumber: "",
+                content: "",
+            });
+        } catch (error) {
+            setMetadataError(error?.message || "Could not save comment.");
+        } finally {
+            setIsSavingFeedback(false);
         }
     }
 
@@ -682,6 +798,18 @@ export default function EnvironmentPage() {
             // Ignore storage errors in restricted browser contexts.
         }
     }, [accessibility]);
+
+    useEffect(() => {
+        if (!isFeedbackDialogOpen) {
+            return;
+        }
+
+        setFeedbackDraft((previous) => ({
+            ...previous,
+            fileName: previous.fileName || currentFile?.name || "",
+            lineNumber: previous.lineNumber || "",
+        }));
+    }, [currentFile?.name, isFeedbackDialogOpen]);
 
     useEffect(() => {
         const shouldSeedInstructions = searchParams.get("seedInstructions") === "1";
@@ -1078,6 +1206,272 @@ export default function EnvironmentPage() {
                     ) : null}
                 </header>
 
+                {isAssignmentEnvironment ? (
+                    <section className="mb-3 rounded-lg border border-zinc-800 bg-zinc-900 p-3 md:p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <h2 className="text-sm font-medium text-zinc-100">
+                                        Assignment progress
+                                    </h2>
+                                    <span
+                                        className={`rounded border px-2 py-0.5 text-xs ${submissionStatusModel.toneClass}`}
+                                    >
+                                        {submissionStatusModel.label}
+                                    </span>
+                                </div>
+                                <p className="mt-1 text-sm text-zinc-400">
+                                    {environment?.access?.assignmentTitle ||
+                                        "Assignment environment"}
+                                </p>
+                                <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-zinc-500">
+                                    {formatDateTime(environment?.access?.submittedAt) ? (
+                                        <span>
+                                            Submitted{" "}
+                                            {formatDateTime(
+                                                environment?.access?.submittedAt,
+                                            )}
+                                        </span>
+                                    ) : null}
+                                    {formatDateTime(latestTestRun?.ranAt) ? (
+                                        <span>
+                                            Last tests{" "}
+                                            {formatDateTime(latestTestRun.ranAt)}
+                                        </span>
+                                    ) : null}
+                                    <span>
+                                        {latestTestRun?.summary?.passed || 0}/
+                                        {latestTestRun?.summary?.total || 0} tests
+                                        passed
+                                    </span>
+                                    <span>
+                                        {teacherComments.length} teacher comment
+                                        {teacherComments.length === 1 ? "" : "s"}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div className="flex flex-wrap gap-2">
+                                {canManageTeacherComments ? (
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-8"
+                                        onClick={() => setIsFeedbackDialogOpen(true)}
+                                    >
+                                        Add comment
+                                    </Button>
+                                ) : null}
+                                {canTeacherReviewSubmission ? (
+                                    <>
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="outline"
+                                            className="h-8"
+                                            disabled={
+                                                isSubmissionUpdating ||
+                                                submissionStatus === "in_progress"
+                                            }
+                                            onClick={() =>
+                                                handleUpdateSubmissionStatus(
+                                                    "in_progress",
+                                                )
+                                            }
+                                        >
+                                            {submissionStatus === "in_progress"
+                                                ? "In progress"
+                                                : "Mark in progress"}
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="outline"
+                                            className="h-8"
+                                            disabled={isSubmissionUpdating}
+                                            onClick={() =>
+                                                handleUpdateSubmissionStatus(
+                                                    "needs_changes",
+                                                )
+                                            }
+                                        >
+                                            Needs changes
+                                        </Button>
+                                    </>
+                                ) : null}
+                                {canStudentSubmit ? (
+                                    <>
+                                        {!isSubmittedAssignment ? (
+                                            <>
+                                                <Button
+                                                    type="button"
+                                                    size="sm"
+                                                    variant="outline"
+                                                    className="h-8"
+                                                    disabled={
+                                                        isSubmissionUpdating ||
+                                                        submissionStatus ===
+                                                            "in_progress"
+                                                    }
+                                                    onClick={() =>
+                                                        handleUpdateSubmissionStatus(
+                                                            "in_progress",
+                                                        )
+                                                    }
+                                                >
+                                                    {submissionStatus ===
+                                                    "in_progress"
+                                                        ? "In progress"
+                                                        : "Mark in progress"}
+                                                </Button>
+                                                <Button
+                                                    type="button"
+                                                    size="sm"
+                                                    className="h-8 bg-zinc-100 text-zinc-900 hover:bg-zinc-200"
+                                                    disabled={isSubmissionUpdating}
+                                                    onClick={() =>
+                                                        handleUpdateSubmissionStatus(
+                                                            "submitted",
+                                                        )
+                                                    }
+                                                >
+                                                    Mark as done
+                                                </Button>
+                                            </>
+                                        ) : (
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                variant="outline"
+                                                className="h-8"
+                                                disabled={isSubmissionUpdating}
+                                                onClick={() =>
+                                                    handleUpdateSubmissionStatus(
+                                                        "in_progress",
+                                                    )
+                                                }
+                                            >
+                                                Undo mark as done
+                                            </Button>
+                                        )}
+                                    </>
+                                ) : null}
+                            </div>
+                        </div>
+
+                        {latestTestRun?.results?.length > 0 ? (
+                            <div className="mt-4 rounded border border-zinc-800 bg-zinc-950/50">
+                                <div className="border-b border-zinc-800 px-3 py-2">
+                                    <p className="text-xs font-medium text-zinc-300">
+                                        Latest test results
+                                    </p>
+                                </div>
+                                <div className="divide-y divide-zinc-800">
+                                    {latestTestRun.results.map((result, index) => (
+                                        <div
+                                            key={result.id || `result-${index}`}
+                                            className="px-3 py-3"
+                                        >
+                                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                                <p className="text-sm font-medium text-zinc-100">
+                                                    {result.name || `Test ${index + 1}`}
+                                                </p>
+                                                <span
+                                                    className={`rounded border px-2 py-0.5 text-xs ${
+                                                        result.passed
+                                                            ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-200"
+                                                            : "border-red-400/30 bg-red-500/10 text-red-200"
+                                                    }`}
+                                                >
+                                                    {result.passed ? "Passed" : "Failed"}
+                                                </span>
+                                            </div>
+                                            <div className="mt-2 grid gap-2 text-xs text-zinc-400 md:grid-cols-2">
+                                                <div className="rounded border border-zinc-800 bg-zinc-900/70 p-2">
+                                                    <p className="mb-1 text-zinc-500">
+                                                        Expected output
+                                                    </p>
+                                                    <pre className="overflow-x-auto whitespace-pre-wrap text-zinc-200">
+                                                        {result.expectedOutput || "(empty)"}
+                                                    </pre>
+                                                </div>
+                                                <div className="rounded border border-zinc-800 bg-zinc-900/70 p-2">
+                                                    <p className="mb-1 text-zinc-500">
+                                                        Actual output
+                                                    </p>
+                                                    <pre className="overflow-x-auto whitespace-pre-wrap text-zinc-200">
+                                                        {result.actualOutput || "(empty)"}
+                                                    </pre>
+                                                </div>
+                                            </div>
+                                            {result.runtimeError ? (
+                                                <p className="mt-2 text-xs text-red-300">
+                                                    {result.runtimeError}
+                                                </p>
+                                            ) : null}
+                                            {Number.isFinite(result.line) ? (
+                                                <button
+                                                    type="button"
+                                                    className="mt-2 text-xs text-sky-300 underline decoration-dotted underline-offset-2"
+                                                    onClick={() =>
+                                                        setEnvironment((prev) => ({
+                                                            ...prev,
+                                                            editorJump: {
+                                                                line: result.line,
+                                                                column: 1,
+                                                                at: `test-${result.id}-${Date.now()}`,
+                                                            },
+                                                        }))
+                                                    }
+                                                >
+                                                    Jump to line {result.line}
+                                                </button>
+                                            ) : null}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        ) : null}
+
+                        {teacherComments.length > 0 ? (
+                            <div className="mt-4 rounded border border-zinc-800 bg-zinc-950/50">
+                                <div className="border-b border-zinc-800 px-3 py-2">
+                                    <p className="text-xs font-medium text-zinc-300">
+                                        Teacher feedback
+                                    </p>
+                                </div>
+                                <div className="divide-y divide-zinc-800">
+                                    {teacherComments.map((comment) => (
+                                        <button
+                                            key={comment.id}
+                                            type="button"
+                                            className="flex w-full flex-wrap items-start justify-between gap-3 px-3 py-3 text-left hover:bg-zinc-900/70"
+                                            onClick={() =>
+                                                jumpToFeedbackComment(comment)
+                                            }
+                                        >
+                                            <div className="min-w-0">
+                                                <p className="text-sm text-zinc-100">
+                                                    {comment.content}
+                                                </p>
+                                                <p className="mt-1 text-xs text-zinc-500">
+                                                    {comment.fileName}: line{" "}
+                                                    {comment.lineNumber} ·{" "}
+                                                    {comment.teacherUsername}
+                                                </p>
+                                            </div>
+                                            <span className="text-xs text-sky-300">
+                                                Open
+                                            </span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        ) : null}
+                    </section>
+                ) : null}
+
                 {isReady ? (
                     <div className="flex min-h-0 flex-1 flex-col gap-3">
                         <div
@@ -1275,6 +1669,114 @@ export default function EnvironmentPage() {
                                     </>
                                 ) : (
                                     "Send help request"
+                                )}
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+
+                <Dialog
+                    open={isFeedbackDialogOpen}
+                    onOpenChange={(open) => {
+                        if (!isSavingFeedback) {
+                            setIsFeedbackDialogOpen(open);
+                        }
+                    }}
+                >
+                    <DialogContent className="max-w-md">
+                        <DialogHeader>
+                            <DialogTitle>Add teacher comment</DialogTitle>
+                            <DialogDescription>
+                                Anchor feedback to a file and line so the student
+                                can jump straight to it.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-3 text-sm">
+                            <div>
+                                <label className="mb-1 block text-xs text-zinc-400">
+                                    File
+                                </label>
+                                <select
+                                    value={feedbackDraft.fileName}
+                                    onChange={(event) =>
+                                        setFeedbackDraft((previous) => ({
+                                            ...previous,
+                                            fileName: event.target.value,
+                                        }))
+                                    }
+                                    className="h-9 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100"
+                                >
+                                    <option value="">Select a file</option>
+                                    {(environment?.files || []).map((file) => (
+                                        <option key={file.id} value={file.name}>
+                                            {file.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="mb-1 block text-xs text-zinc-400">
+                                    Line number
+                                </label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    value={feedbackDraft.lineNumber}
+                                    onChange={(event) =>
+                                        setFeedbackDraft((previous) => ({
+                                            ...previous,
+                                            lineNumber: event.target.value,
+                                        }))
+                                    }
+                                    className="h-9 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100"
+                                />
+                            </div>
+                            <div>
+                                <label className="mb-1 block text-xs text-zinc-400">
+                                    Comment
+                                </label>
+                                <Textarea
+                                    value={feedbackDraft.content}
+                                    onChange={(event) =>
+                                        setFeedbackDraft((previous) => ({
+                                            ...previous,
+                                            content: event.target.value,
+                                        }))
+                                    }
+                                    maxLength={2000}
+                                    className="min-h-28"
+                                    placeholder="Explain what to fix and why."
+                                />
+                            </div>
+                        </div>
+                        <DialogFooter>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                disabled={isSavingFeedback}
+                                onClick={() => setIsFeedbackDialogOpen(false)}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                type="button"
+                                disabled={isSavingFeedback}
+                                className="bg-zinc-100 text-zinc-900 hover:bg-zinc-200"
+                                onClick={handleCreateTeacherComment}
+                            >
+                                {isSavingFeedback ? (
+                                    <>
+                                        <LoaderCircle
+                                            className={`size-4 ${
+                                                accessibility.reduceMotion
+                                                    ? ""
+                                                    : "animate-spin"
+                                            }`}
+                                        />
+                                        Saving
+                                    </>
+                                ) : (
+                                    "Save comment"
                                 )}
                             </Button>
                         </DialogFooter>

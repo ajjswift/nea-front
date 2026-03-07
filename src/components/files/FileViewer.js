@@ -334,6 +334,7 @@ export function FileViewer({
     const editorRef = useRef(null);
     const monacoRef = useRef(null);
     const decorationsRef = useRef([]);
+    const commentDecorationsRef = useRef([]);
     const isApplyingRemoteChangeRef = useRef(false);
     const currentFileIdRef = useRef(null);
     const previousFileIdRef = useRef(null);
@@ -367,6 +368,12 @@ export function FileViewer({
           : [];
     const checklistRequiredFiles = normalizeRequiredFiles(
         environment?.access?.checklist || environment?.access?.checklist_json,
+    );
+    const teacherComments = Array.isArray(environment?.access?.teacherComments)
+        ? environment.access.teacherComments
+        : [];
+    const currentFileComments = teacherComments.filter(
+        (comment) => comment?.fileName === currentFile?.name,
     );
     const shouldShowInstructionsContext =
         isInstructionsMarkdown &&
@@ -413,6 +420,7 @@ export function FileViewer({
         editorRef.current = null;
         monacoRef.current = null;
         decorationsRef.current = [];
+        commentDecorationsRef.current = [];
         previousFileIdRef.current = null;
     }, [shouldShowRawEditor]);
 
@@ -946,6 +954,67 @@ export function FileViewer({
         };
     }, [remoteCursors, environment?.currentFile, environment?.userId]);
 
+    useEffect(() => {
+        const editor = editorRef.current;
+        const monaco = monacoRef.current;
+
+        if (!editor || !monaco || !shouldShowRawEditor) {
+            return;
+        }
+
+        const styleId = "teacher-feedback-decoration-style";
+        if (!document.getElementById(styleId)) {
+            const style = document.createElement("style");
+            style.id = styleId;
+            style.textContent = `
+              .teacher-feedback-line {
+                background: rgba(250, 204, 21, 0.08);
+                border-left: 2px solid rgba(250, 204, 21, 0.7);
+              }
+              .teacher-feedback-glyph {
+                background: rgba(250, 204, 21, 0.9);
+                width: 6px !important;
+                margin-left: 4px;
+                border-radius: 999px;
+              }
+            `;
+            document.head.appendChild(style);
+        }
+
+        const decorations = currentFileComments
+            .filter((comment) => Number.isFinite(comment?.lineNumber))
+            .map((comment) => ({
+                range: new monaco.Range(
+                    comment.lineNumber,
+                    1,
+                    comment.lineNumber,
+                    1,
+                ),
+                options: {
+                    isWholeLine: true,
+                    className: "teacher-feedback-line",
+                    linesDecorationsClassName: "teacher-feedback-glyph",
+                    hoverMessage: {
+                        value: `Teacher comment: ${comment.content || ""}`,
+                    },
+                },
+            }));
+
+        commentDecorationsRef.current = editor.deltaDecorations(
+            commentDecorationsRef.current,
+            decorations,
+        );
+
+        return () => {
+            if (commentDecorationsRef.current?.length > 0) {
+                commentDecorationsRef.current = editor.deltaDecorations(
+                    commentDecorationsRef.current,
+                    [],
+                );
+            }
+        };
+    }, [currentFileComments, shouldShowRawEditor]);
+
     return (
         <div
             className={cn(
@@ -957,6 +1026,12 @@ export function FileViewer({
             <div className="flex items-center justify-between border-b border-zinc-800 px-3 py-2 text-xs text-zinc-400">
                 <div className="min-w-0 truncate">{currentFile?.name || "No file selected"}</div>
                 <div className="flex items-center gap-1">
+                    {teacherComments.length > 0 ? (
+                        <span className="rounded border border-amber-400/30 bg-amber-500/10 px-2 py-1 text-amber-200">
+                            {teacherComments.length} comment
+                            {teacherComments.length === 1 ? "" : "s"}
+                        </span>
+                    ) : null}
                     {isMarkdownFile && (
                         <>
                             <button
@@ -1055,6 +1130,41 @@ export function FileViewer({
                     </div>
                 </div>
             )}
+
+            {currentFileComments.length > 0 ? (
+                <div className="border-b border-zinc-800 bg-amber-500/5 px-3 py-2 text-xs">
+                    <p className="mb-1 font-medium text-amber-200">
+                        Teacher comments on this file
+                    </p>
+                    <div className="space-y-2">
+                        {currentFileComments.map((comment) => (
+                            <div
+                                key={comment.id}
+                                className="rounded border border-amber-400/20 bg-zinc-950/70 px-2 py-2"
+                            >
+                                <button
+                                    type="button"
+                                    className="text-left text-amber-100 underline decoration-dotted underline-offset-2 hover:text-white"
+                                    onClick={() =>
+                                        jumpToEditorLocation(
+                                            comment.lineNumber,
+                                            1,
+                                        )
+                                    }
+                                >
+                                    Line {comment.lineNumber}
+                                </button>
+                                <p className="mt-1 text-zinc-200">
+                                    {comment.content}
+                                </p>
+                                <p className="mt-1 text-zinc-500">
+                                    {comment.teacherUsername || "Teacher"}
+                                </p>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            ) : null}
 
             {shouldShowInstructionsContext ? (
                 <div className="border-b border-zinc-800 bg-zinc-950/70 px-3 py-2 text-xs">

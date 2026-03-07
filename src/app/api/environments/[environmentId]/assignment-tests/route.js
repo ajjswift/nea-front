@@ -5,6 +5,7 @@ import { EnvironmentRepository } from "@/lib/environments/EnvironmentRepository"
 import { EnvironmentService } from "@/lib/environments/EnvironmentService";
 import { ClassroomRepository } from "@/lib/classroom/ClassroomRepository";
 import { ClassroomService } from "@/lib/classroom/ClassroomService";
+import { frontendCacheInvalidator } from "@/lib/cache/FrontendCache";
 
 const sessionService = new SessionService(db);
 const environmentRepository = new EnvironmentRepository(db);
@@ -162,6 +163,13 @@ export async function POST(request, { params }) {
         }
 
         const access = await resolveAccessContext(request, environmentId);
+        if (!access.user) {
+            return NextResponse.json(
+                { error: "Authentication required." },
+                { status: 401 },
+            );
+        }
+
         if (!access.canView) {
             return NextResponse.json({ error: "Environment not found." }, { status: 404 });
         }
@@ -241,7 +249,31 @@ export async function POST(request, { params }) {
             );
         }
 
-        return NextResponse.json(proxyPayload || {}, { status: 200 });
+        const responsePayload = proxyPayload || {};
+        const persistedTestRun = {
+            ranAt: new Date().toISOString(),
+            summary:
+                responsePayload?.summary && typeof responsePayload.summary === "object"
+                    ? responsePayload.summary
+                    : {
+                          total: 0,
+                          passed: 0,
+                          failed: 0,
+                      },
+            results: Array.isArray(responsePayload?.results)
+                ? responsePayload.results
+                : [],
+        };
+
+        if (access.assignmentContext?.assignment_environment_id) {
+            await classroomRepository.storeAssignmentEnvironmentTestRun(
+                environmentId,
+                persistedTestRun,
+            );
+            await frontendCacheInvalidator.invalidateAfterClassroomMutation();
+        }
+
+        return NextResponse.json(persistedTestRun, { status: 200 });
     } catch (error) {
         console.error("Assignment tests request failed:", error);
 

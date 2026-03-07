@@ -12,6 +12,9 @@ export class StudentAssignmentViewModel {
         classId,
         className,
         environmentId = null,
+        submissionStatus = "not_started",
+        latestTestSummary = null,
+        commentsCount = 0,
     }) {
         this.assignmentId = assignmentId;
         this.title = title;
@@ -20,6 +23,9 @@ export class StudentAssignmentViewModel {
         this.classId = classId;
         this.className = className;
         this.environmentId = environmentId;
+        this.submissionStatus = submissionStatus;
+        this.latestTestSummary = latestTestSummary;
+        this.commentsCount = commentsCount;
     }
 
     static fromDashboardClasses(classes = []) {
@@ -45,6 +51,12 @@ export class StudentAssignmentViewModel {
                         classId: classEntry.id,
                         className: classEntry.name || "Class",
                         environmentId: primaryEnvironmentId,
+                        submissionStatus:
+                            links[0]?.submissionStatus || "not_started",
+                        latestTestSummary: links[0]?.latestTestSummary || null,
+                        commentsCount: Number.isFinite(links[0]?.commentsCount)
+                            ? links[0].commentsCount
+                            : 0,
                     }),
                 );
             }
@@ -132,5 +144,24 @@ export class StudentAssignmentViewModel {
         }
 
         return { label: "Upcoming", tone: "upcoming" };
+    }
+
+    get testProgressLabel() {
+        if (!this.latestTestSummary) {
+            return null;
+        }
+
+        const total = Number.isFinite(this.latestTestSummary.total)
+            ? this.latestTestSummary.total
+            : 0;
+        const passed = Number.isFinite(this.latestTestSummary.passed)
+            ? this.latestTestSummary.passed
+            : 0;
+
+        if (total <= 0) {
+            return null;
+        }
+
+        return `${passed}/${total} tests passed`;
     }
 }

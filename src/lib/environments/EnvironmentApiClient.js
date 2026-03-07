@@ -58,6 +58,22 @@ export class EnvironmentApiClient {
         );
     }
 
+    async updateAssignmentSubmission(environmentId, payload) {
+        return this.sendRequest(
+            "PATCH",
+            payload,
+            `/${environmentId}/submission`,
+        );
+    }
+
+    async createTeacherFeedbackComment(environmentId, payload) {
+        return this.sendRequest(
+            "POST",
+            payload,
+            `/${environmentId}/feedback-comments`,
+        );
+    }
+
     async sendRequest(method, body = null, path = "") {
         const response = await fetch(`${this.basePath}${path}`, {
             method,

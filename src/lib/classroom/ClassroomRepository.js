@@ -538,12 +538,26 @@ export class ClassroomRepository {
                     ae.id AS assignment_environment_id,
                     ae.environment_id,
                     ae.student_id,
+                    ae.submission_status,
+                    ae.submission_updated_at,
+                    ae.submitted_at,
+                    ae.reviewed_at,
+                    ae.latest_test_run_json,
+                    COALESCE(comment_counts.comments_count, 0) AS comments_count,
                     u.username AS student_username
                 FROM assignments AS a
                 LEFT JOIN environments AS te
                     ON te.id = a.template_environment_id
                 LEFT JOIN assignment_environments AS ae
                     ON ae.assignment_id = a.id
+                LEFT JOIN (
+                    SELECT
+                        assignment_environment_id,
+                        COUNT(*)::int AS comments_count
+                    FROM assignment_feedback_comments
+                    GROUP BY assignment_environment_id
+                ) AS comment_counts
+                    ON comment_counts.assignment_environment_id = ae.id
                 LEFT JOIN users AS u
                     ON u.id = ae.student_id
                 WHERE a.class_id = $1
@@ -578,6 +592,12 @@ export class ClassroomRepository {
                     ae.id AS assignment_environment_id,
                     ae.environment_id,
                     ae.student_id,
+                    ae.submission_status,
+                    ae.submission_updated_at,
+                    ae.submitted_at,
+                    ae.reviewed_at,
+                    ae.latest_test_run_json,
+                    COALESCE(comment_counts.comments_count, 0) AS comments_count,
                     u.username AS student_username
                 FROM assignments AS a
                 LEFT JOIN environments AS te
@@ -585,6 +605,14 @@ export class ClassroomRepository {
                 LEFT JOIN assignment_environments AS ae
                     ON ae.assignment_id = a.id
                     AND ae.student_id = $2
+                LEFT JOIN (
+                    SELECT
+                        assignment_environment_id,
+                        COUNT(*)::int AS comments_count
+                    FROM assignment_feedback_comments
+                    GROUP BY assignment_environment_id
+                ) AS comment_counts
+                    ON comment_counts.assignment_environment_id = ae.id
                 LEFT JOIN users AS u
                     ON u.id = ae.student_id
                 WHERE a.class_id = $1
@@ -604,8 +632,14 @@ export class ClassroomRepository {
         const result = await executor.query(
             `
                 SELECT
+                    ae.id AS assignment_environment_id,
                     ae.assignment_id,
                     ae.environment_id,
+                    ae.submission_status,
+                    ae.submission_updated_at,
+                    ae.submitted_at,
+                    ae.reviewed_at,
+                    ae.latest_test_run_json,
                     a.class_id,
                     a.title AS assignment_title,
                     c.name AS class_name
@@ -619,6 +653,268 @@ export class ClassroomRepository {
                 LIMIT 1
             `,
             [studentId, environmentId],
+        );
+
+        return result.rows[0] || null;
+    }
+
+    async findAssignmentEnvironmentByEnvironmentId(
+        environmentId,
+        executor = this.database,
+    ) {
+        const result = await executor.query(
+            `
+                SELECT
+                    ae.id,
+                    ae.assignment_id,
+                    ae.student_id,
+                    ae.environment_id,
+                    ae.submission_status,
+                    ae.submission_updated_at,
+                    ae.submitted_at,
+                    ae.reviewed_at,
+                    ae.latest_test_run_json,
+                    a.class_id,
+                    a.teacher_id,
+                    a.title AS assignment_title,
+                    c.name AS class_name,
+                    u.username AS student_username
+                FROM assignment_environments AS ae
+                INNER JOIN assignments AS a
+                    ON a.id = ae.assignment_id
+                INNER JOIN classes AS c
+                    ON c.id = a.class_id
+                INNER JOIN users AS u
+                    ON u.id = ae.student_id
+                WHERE ae.environment_id = $1
+                LIMIT 1
+            `,
+            [environmentId],
+        );
+
+        return result.rows[0] || null;
+    }
+
+    async findAssignmentEnvironmentForStudent(
+        environmentId,
+        studentId,
+        executor = this.database,
+    ) {
+        const result = await executor.query(
+            `
+                SELECT
+                    ae.id,
+                    ae.assignment_id,
+                    ae.student_id,
+                    ae.environment_id,
+                    ae.submission_status,
+                    ae.submission_updated_at,
+                    ae.submitted_at,
+                    ae.reviewed_at,
+                    ae.latest_test_run_json,
+                    a.class_id,
+                    a.teacher_id,
+                    a.title AS assignment_title
+                FROM assignment_environments AS ae
+                INNER JOIN assignments AS a
+                    ON a.id = ae.assignment_id
+                WHERE ae.environment_id = $1
+                    AND ae.student_id = $2
+                LIMIT 1
+            `,
+            [environmentId, studentId],
+        );
+
+        return result.rows[0] || null;
+    }
+
+    async findAssignmentEnvironmentForTeacher(
+        environmentId,
+        teacherId,
+        executor = this.database,
+    ) {
+        const result = await executor.query(
+            `
+                SELECT
+                    ae.id,
+                    ae.assignment_id,
+                    ae.student_id,
+                    ae.environment_id,
+                    ae.submission_status,
+                    ae.submission_updated_at,
+                    ae.submitted_at,
+                    ae.reviewed_at,
+                    ae.latest_test_run_json,
+                    a.class_id,
+                    a.teacher_id,
+                    a.title AS assignment_title
+                FROM assignment_environments AS ae
+                INNER JOIN assignments AS a
+                    ON a.id = ae.assignment_id
+                WHERE ae.environment_id = $1
+                    AND a.teacher_id = $2
+                LIMIT 1
+            `,
+            [environmentId, teacherId],
+        );
+
+        return result.rows[0] || null;
+    }
+
+    async updateAssignmentEnvironmentSubmissionStatus(
+        environmentId,
+        submissionStatus,
+        executor = this.database,
+    ) {
+        const result = await executor.query(
+            `
+                UPDATE assignment_environments
+                SET
+                    submission_status = $2,
+                    submission_updated_at = NOW(),
+                    submitted_at = CASE
+                        WHEN $2 = 'submitted' THEN NOW()
+                        ELSE submitted_at
+                    END,
+                    reviewed_at = CASE
+                        WHEN $2 = 'needs_changes' THEN NOW()
+                        WHEN $2 IN ('submitted', 'in_progress', 'not_started') THEN NULL
+                        ELSE reviewed_at
+                    END
+                WHERE environment_id = $1
+                RETURNING
+                    id,
+                    assignment_id,
+                    student_id,
+                    environment_id,
+                    submission_status,
+                    submission_updated_at,
+                    submitted_at,
+                    reviewed_at,
+                    latest_test_run_json
+            `,
+            [environmentId, submissionStatus],
+        );
+
+        return result.rows[0] || null;
+    }
+
+    async storeAssignmentEnvironmentTestRun(
+        environmentId,
+        latestTestRunJson,
+        executor = this.database,
+    ) {
+        const result = await executor.query(
+            `
+                UPDATE assignment_environments
+                SET
+                    latest_test_run_json = $2,
+                    submission_status = CASE
+                        WHEN submission_status = 'not_started' THEN 'in_progress'
+                        ELSE submission_status
+                    END,
+                    submission_updated_at = CASE
+                        WHEN submission_status = 'not_started' THEN NOW()
+                        ELSE submission_updated_at
+                    END
+                WHERE environment_id = $1
+                RETURNING
+                    id,
+                    assignment_id,
+                    student_id,
+                    environment_id,
+                    submission_status,
+                    submission_updated_at,
+                    submitted_at,
+                    reviewed_at,
+                    latest_test_run_json
+            `,
+            [environmentId, JSON.stringify(latestTestRunJson || {})],
+        );
+
+        return result.rows[0] || null;
+    }
+
+    async listAssignmentFeedbackCommentsForEnvironment(
+        environmentId,
+        executor = this.database,
+    ) {
+        const result = await executor.query(
+            `
+                SELECT
+                    afc.id,
+                    afc.assignment_environment_id,
+                    afc.assignment_id,
+                    afc.environment_id,
+                    afc.teacher_id,
+                    afc.file_name,
+                    afc.line_number,
+                    afc.content,
+                    afc.created_at,
+                    afc.updated_at,
+                    u.username AS teacher_username
+                FROM assignment_feedback_comments AS afc
+                INNER JOIN users AS u
+                    ON u.id = afc.teacher_id
+                WHERE afc.environment_id = $1
+                ORDER BY afc.created_at ASC
+            `,
+            [environmentId],
+        );
+
+        return result.rows;
+    }
+
+    async createAssignmentFeedbackComment(
+        {
+            id,
+            assignmentEnvironmentId,
+            assignmentId,
+            environmentId,
+            teacherId,
+            fileName,
+            lineNumber,
+            content,
+        },
+        executor = this.database,
+    ) {
+        const result = await executor.query(
+            `
+                INSERT INTO assignment_feedback_comments (
+                    id,
+                    assignment_environment_id,
+                    assignment_id,
+                    environment_id,
+                    teacher_id,
+                    file_name,
+                    line_number,
+                    content,
+                    created_at,
+                    updated_at
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
+                RETURNING
+                    id,
+                    assignment_environment_id,
+                    assignment_id,
+                    environment_id,
+                    teacher_id,
+                    file_name,
+                    line_number,
+                    content,
+                    created_at,
+                    updated_at
+            `,
+            [
+                id,
+                assignmentEnvironmentId,
+                assignmentId,
+                environmentId,
+                teacherId,
+                fileName,
+                lineNumber,
+                content,
+            ],
         );
 
         return result.rows[0] || null;
@@ -841,9 +1137,15 @@ export class ClassroomRepository {
         const result = await executor.query(
             `
                 SELECT
+                    ae.id AS assignment_environment_id,
                     ae.assignment_id,
                     ae.student_id,
                     ae.environment_id,
+                    ae.submission_status,
+                    ae.submission_updated_at,
+                    ae.submitted_at,
+                    ae.reviewed_at,
+                    ae.latest_test_run_json,
                     a.class_id,
                     a.teacher_id,
                     a.template_environment_id,

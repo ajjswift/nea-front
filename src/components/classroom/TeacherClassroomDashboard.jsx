@@ -173,6 +173,32 @@ function buildFollowEnvironmentHref(environmentId, studentId) {
     return `${basePath}?${params.toString()}`;
 }
 
+function getSubmissionBadge(status) {
+    if (status === "submitted") {
+        return {
+            label: "Submitted",
+            className: "border-emerald-400/50 bg-emerald-500/15 text-emerald-200",
+        };
+    }
+    if (status === "needs_changes") {
+        return {
+            label: "Needs changes",
+            className: "border-amber-400/50 bg-amber-500/15 text-amber-200",
+        };
+    }
+    if (status === "in_progress") {
+        return {
+            label: "In progress",
+            className: "border-sky-400/50 bg-sky-500/15 text-sky-200",
+        };
+    }
+
+    return {
+        label: "Not started",
+        className: "border-zinc-600 bg-zinc-800 text-zinc-300",
+    };
+}
+
 export default function TeacherClassroomDashboard() {
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -1604,9 +1630,35 @@ export default function TeacherClassroomDashboard() {
                                             key={entry.assignmentEnvironmentId}
                                             className="grid grid-cols-[1fr_auto] items-center gap-3 border-b border-zinc-800 px-3 py-2 last:border-b-0"
                                         >
-                                            <span className="truncate text-sm text-zinc-200">
-                                                {entry.assignmentTitle}
-                                            </span>
+                                            <div className="min-w-0">
+                                                <p className="truncate text-sm text-zinc-200">
+                                                    {entry.assignmentTitle}
+                                                </p>
+                                                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
+                                                    <span
+                                                        className={`rounded border px-2 py-0.5 ${getSubmissionBadge(entry.submissionStatus).className}`}
+                                                    >
+                                                        {
+                                                            getSubmissionBadge(
+                                                                entry.submissionStatus,
+                                                            ).label
+                                                        }
+                                                    </span>
+                                                    <span>
+                                                        {entry.latestTestSummary
+                                                            ? `${entry.latestTestSummary.passed || 0}/${entry.latestTestSummary.total || 0} tests passed`
+                                                            : "No tests run"}
+                                                    </span>
+                                                    {entry.commentsCount > 0 ? (
+                                                        <span className="text-amber-300">
+                                                            {entry.commentsCount} comment
+                                                            {entry.commentsCount === 1
+                                                                ? ""
+                                                                : "s"}
+                                                        </span>
+                                                    ) : null}
+                                                </div>
+                                            </div>
                                             <div className="flex items-center gap-2">
                                                 <Button
                                                     asChild
@@ -2379,9 +2431,35 @@ export default function TeacherClassroomDashboard() {
                                                     }
                                                     className="grid grid-cols-[1fr_auto] items-center gap-3 border-b border-zinc-800 px-3 py-2 last:border-b-0"
                                                 >
-                                                    <span className="text-sm text-zinc-200">
-                                                        {entry.studentUsername}
-                                                    </span>
+                                                    <div>
+                                                        <p className="text-sm text-zinc-200">
+                                                            {entry.studentUsername}
+                                                        </p>
+                                                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
+                                                            <span
+                                                                className={`rounded border px-2 py-0.5 ${getSubmissionBadge(entry.submissionStatus).className}`}
+                                                            >
+                                                                {
+                                                                    getSubmissionBadge(
+                                                                        entry.submissionStatus,
+                                                                    ).label
+                                                                }
+                                                            </span>
+                                                            <span>
+                                                                {entry.latestTestSummary
+                                                                    ? `${entry.latestTestSummary.passed || 0}/${entry.latestTestSummary.total || 0} tests passed`
+                                                                    : "No tests run"}
+                                                            </span>
+                                                            {entry.commentsCount > 0 ? (
+                                                                <span className="text-amber-300">
+                                                                    {entry.commentsCount} comment
+                                                                    {entry.commentsCount === 1
+                                                                        ? ""
+                                                                        : "s"}
+                                                                </span>
+                                                            ) : null}
+                                                        </div>
+                                                    </div>
                                                     <div className="flex items-center gap-2">
                                                         <Button
                                                             asChild

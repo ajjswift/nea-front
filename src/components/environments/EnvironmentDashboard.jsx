@@ -55,6 +55,32 @@ function getDueBadgeClass(tone) {
     return "border-zinc-600 bg-zinc-800 text-zinc-300";
 }
 
+function getSubmissionBadge(status) {
+    if (status === "submitted") {
+        return {
+            label: "Submitted",
+            className: "border-emerald-400/50 bg-emerald-500/15 text-emerald-200",
+        };
+    }
+    if (status === "needs_changes") {
+        return {
+            label: "Needs changes",
+            className: "border-amber-400/50 bg-amber-500/15 text-amber-200",
+        };
+    }
+    if (status === "in_progress") {
+        return {
+            label: "In progress",
+            className: "border-sky-400/50 bg-sky-500/15 text-sky-200",
+        };
+    }
+
+    return {
+        label: "Not started",
+        className: "border-zinc-600 bg-zinc-800 text-zinc-300",
+    };
+}
+
 export default function EnvironmentDashboard() {
     const router = useRouter();
     const [formState, setFormState] = useState(emptyFormState);
@@ -365,6 +391,10 @@ export default function EnvironmentDashboard() {
                                         const isOpenable = Boolean(
                                             assignment.environmentHref,
                                         );
+                                        const submissionBadge =
+                                            getSubmissionBadge(
+                                                assignment.submissionStatus,
+                                            );
 
                                         return (
                                             <div
@@ -409,6 +439,9 @@ export default function EnvironmentDashboard() {
                                                             <Clock3 className="size-3" />
                                                             {assignment.dueAtLabel}
                                                         </span>
+                                                        <span>{assignment.className}</span>
+                                                    </div>
+                                                    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
                                                         {assignment.dueUrgency ? (
                                                             <span
                                                                 className={`rounded border px-2 py-0.5 ${getDueBadgeClass(
@@ -421,7 +454,27 @@ export default function EnvironmentDashboard() {
                                                                 }
                                                             </span>
                                                         ) : null}
-                                                        <span>{assignment.className}</span>
+                                                        <span
+                                                            className={`rounded border px-2 py-0.5 ${submissionBadge.className}`}
+                                                        >
+                                                            {submissionBadge.label}
+                                                        </span>
+                                                        {assignment.testProgressLabel ? (
+                                                            <span className="rounded border border-zinc-700 bg-zinc-800 px-2 py-0.5 text-zinc-300">
+                                                                {
+                                                                    assignment.testProgressLabel
+                                                                }
+                                                            </span>
+                                                        ) : null}
+                                                        {assignment.commentsCount > 0 ? (
+                                                            <span className="rounded border border-amber-400/40 bg-amber-500/10 px-2 py-0.5 text-amber-200">
+                                                                {assignment.commentsCount} teacher
+                                                                comment
+                                                                {assignment.commentsCount === 1
+                                                                    ? ""
+                                                                    : "s"}
+                                                            </span>
+                                                        ) : null}
                                                     </div>
                                                 </div>
                                                 <div className="flex items-center gap-2">

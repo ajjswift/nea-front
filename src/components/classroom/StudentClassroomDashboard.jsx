@@ -76,6 +76,32 @@ function getDueBadgeClass(tone) {
     return "border-zinc-600 bg-zinc-800 text-zinc-300";
 }
 
+function getSubmissionBadge(status) {
+    if (status === "submitted") {
+        return {
+            label: "Submitted",
+            className: "border-emerald-400/50 bg-emerald-500/15 text-emerald-200",
+        };
+    }
+    if (status === "needs_changes") {
+        return {
+            label: "Needs changes",
+            className: "border-amber-400/50 bg-amber-500/15 text-amber-200",
+        };
+    }
+    if (status === "in_progress") {
+        return {
+            label: "In progress",
+            className: "border-sky-400/50 bg-sky-500/15 text-sky-200",
+        };
+    }
+
+    return {
+        label: "Not started",
+        className: "border-zinc-600 bg-zinc-800 text-zinc-300",
+    };
+}
+
 export default function StudentClassroomDashboard({ initialDashboard = null }) {
     const searchParams = useSearchParams();
     const [dashboard, setDashboard] = useState(
@@ -266,6 +292,22 @@ export default function StudentClassroomDashboard({ initialDashboard = null }) {
                                             const dueUrgency = getDueUrgency(
                                                 assignment.dueAt,
                                             );
+                                            const submissionBadge =
+                                                getSubmissionBadge(
+                                                    assignment.environments?.[0]
+                                                        ?.submissionStatus,
+                                                );
+                                            const latestTestSummary =
+                                                assignment.environments?.[0]
+                                                    ?.latestTestSummary || null;
+                                            const commentsCount =
+                                                assignment.environments?.[0]
+                                                    ?.commentsCount || 0;
+                                            const testProgressLabel =
+                                                latestTestSummary &&
+                                                Number(latestTestSummary.total) > 0
+                                                    ? `${latestTestSummary.passed || 0}/${latestTestSummary.total || 0} tests passed`
+                                                    : null;
 
                                             return (
                                                 <div
@@ -284,8 +326,8 @@ export default function StudentClassroomDashboard({ initialDashboard = null }) {
                                                             <Clock3 className="size-3" />
                                                             {formatDueLabel(assignment.dueAt)}
                                                         </p>
-                                                        {dueUrgency ? (
-                                                            <p className="mt-2">
+                                                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                                                            {dueUrgency ? (
                                                                 <span
                                                                     className={`rounded border px-2 py-0.5 text-xs ${getDueBadgeClass(
                                                                         dueUrgency.tone,
@@ -293,8 +335,26 @@ export default function StudentClassroomDashboard({ initialDashboard = null }) {
                                                                 >
                                                                     {dueUrgency.label}
                                                                 </span>
-                                                            </p>
-                                                        ) : null}
+                                                            ) : null}
+                                                            <span
+                                                                className={`rounded border px-2 py-0.5 text-xs ${submissionBadge.className}`}
+                                                            >
+                                                                {submissionBadge.label}
+                                                            </span>
+                                                            {testProgressLabel ? (
+                                                                <span className="rounded border border-zinc-700 bg-zinc-800 px-2 py-0.5 text-xs text-zinc-300">
+                                                                    {testProgressLabel}
+                                                                </span>
+                                                            ) : null}
+                                                            {commentsCount > 0 ? (
+                                                                <span className="rounded border border-amber-400/40 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-200">
+                                                                    {commentsCount} teacher comment
+                                                                    {commentsCount === 1
+                                                                        ? ""
+                                                                        : "s"}
+                                                                </span>
+                                                            ) : null}
+                                                        </div>
                                                     </div>
                                                     {environmentHref ? (
                                                         <Button

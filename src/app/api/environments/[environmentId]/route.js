@@ -173,6 +173,23 @@ export async function GET(request, { params }) {
         }
 
         const isAssignmentEnvironment = Boolean(assignmentContext);
+        let assignmentFeedbackComments = [];
+        if (isAssignmentEnvironment) {
+            try {
+                const commentRows =
+                    await classroomRepository.listAssignmentFeedbackCommentsForEnvironment(
+                        environmentId,
+                    );
+                assignmentFeedbackComments = commentRows
+                    .map((row) => classroomService.mapAssignmentFeedbackComment(row))
+                    .filter(Boolean);
+            } catch (error) {
+                if (!isMissingTableError(error)) {
+                    throw error;
+                }
+                assignmentFeedbackComments = [];
+            }
+        }
         const anonymousViewer = !user
             ? getAnonymousViewerFromRequest(request)
             : null;
@@ -223,9 +240,15 @@ export async function GET(request, { params }) {
                 isAssignmentEnvironment &&
                 user.role === "teacher" &&
                 assignmentContext?.teacher_id === user.userId;
+            const isSubmittedStudentEnvironment =
+                isAssignmentStudentOwner &&
+                assignmentContext?.submission_status === "submitted";
             const canResetToTemplate = Boolean(
                 assignmentContext?.template_environment_id &&
                     (isAssignmentStudentOwner || isAssignmentTeacherViewer),
+            );
+            const latestTestRun = classroomService.parseLatestTestRun(
+                assignmentContext?.latest_test_run_json,
             );
 
             const payload = {
@@ -240,6 +263,8 @@ export async function GET(request, { params }) {
                     viewerUserId: user.userId,
                     viewerRole: user.role || "student",
                     isAssignmentEnvironment,
+                    assignmentEnvironmentId:
+                        assignmentContext?.assignment_environment_id || null,
                     assignmentId: assignmentContext?.assignment_id || null,
                     assignmentTitle: assignmentContext?.assignment_title || null,
                     assignmentDescription:
@@ -254,8 +279,22 @@ export async function GET(request, { params }) {
                     checklist: normalizeJsonObject(
                         assignmentContext?.checklist_json,
                     ),
+                    submissionStatus:
+                        assignmentContext?.submission_status || "not_started",
+                    submissionUpdatedAt:
+                        assignmentContext?.submission_updated_at || null,
+                    submittedAt: assignmentContext?.submitted_at || null,
+                    reviewedAt: assignmentContext?.reviewed_at || null,
+                    latestTestRun,
+                    teacherComments: assignmentFeedbackComments,
+                    canManageTeacherComments: Boolean(
+                        isAssignmentTeacherViewer,
+                    ),
+                    canUpdateSubmissionStatus: Boolean(
+                        isAssignmentStudentOwner || isAssignmentTeacherViewer,
+                    ),
                     instructionsReadOnly: Boolean(isAssignmentStudentOwner),
-                    environmentReadOnly: false,
+                    environmentReadOnly: Boolean(isSubmittedStudentEnvironment),
                     canResetToTemplate,
                 },
             };
@@ -279,6 +318,8 @@ export async function GET(request, { params }) {
                 viewerUserId: anonymousViewer.viewer.id,
                 viewerRole: anonymousViewer.viewer.role,
                 isAssignmentEnvironment,
+                assignmentEnvironmentId:
+                    assignmentContext?.assignment_environment_id || null,
                 assignmentId: assignmentContext?.assignment_id || null,
                 assignmentTitle: assignmentContext?.assignment_title || null,
                 assignmentDescription:
@@ -289,6 +330,18 @@ export async function GET(request, { params }) {
                     assignmentContext?.template_environment_id || null,
                 testCases: normalizeJsonArray(assignmentContext?.test_cases_json),
                 checklist: normalizeJsonObject(assignmentContext?.checklist_json),
+                submissionStatus:
+                    assignmentContext?.submission_status || "not_started",
+                submissionUpdatedAt:
+                    assignmentContext?.submission_updated_at || null,
+                submittedAt: assignmentContext?.submitted_at || null,
+                reviewedAt: assignmentContext?.reviewed_at || null,
+                latestTestRun: classroomService.parseLatestTestRun(
+                    assignmentContext?.latest_test_run_json,
+                ),
+                teacherComments: assignmentFeedbackComments,
+                canManageTeacherComments: false,
+                canUpdateSubmissionStatus: false,
                 instructionsReadOnly: false,
                 environmentReadOnly: false,
                 canResetToTemplate: false,

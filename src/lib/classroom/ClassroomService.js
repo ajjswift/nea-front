@@ -238,6 +238,146 @@ export class ClassroomService {
         return fallback;
     }
 
+    normalizeSubmissionStatus(value) {
+        const normalized =
+            typeof value === "string" ? value.trim().toLowerCase() : "";
+        const allowed = new Set([
+            "not_started",
+            "in_progress",
+            "submitted",
+            "needs_changes",
+        ]);
+
+        if (!allowed.has(normalized)) {
+            throw new ClassroomValidationError("Invalid submission status.");
+        }
+
+        return normalized;
+    }
+
+    normalizeFeedbackFileName(value) {
+        const normalized =
+            typeof value === "string" ? value.trim().slice(0, 160) : "";
+        if (!normalized) {
+            throw new ClassroomValidationError("File name is required.");
+        }
+
+        return normalized;
+    }
+
+    normalizeFeedbackLineNumber(value) {
+        const numeric = Number(value);
+        if (!Number.isInteger(numeric) || numeric < 1 || numeric > 50000) {
+            throw new ClassroomValidationError(
+                "Line number must be a whole number between 1 and 50000.",
+            );
+        }
+
+        return numeric;
+    }
+
+    normalizeFeedbackContent(value) {
+        const normalized =
+            typeof value === "string" ? value.trim().slice(0, 2000) : "";
+        if (!normalized) {
+            throw new ClassroomValidationError("Comment text is required.");
+        }
+
+        return normalized;
+    }
+
+    parseLatestTestRun(value) {
+        const parsed = this.parseJsonObject(value, {});
+        const summary =
+            parsed?.summary && typeof parsed.summary === "object"
+                ? parsed.summary
+                : {};
+        const rawResults = Array.isArray(parsed?.results) ? parsed.results : [];
+
+        return {
+            ranAt:
+                typeof parsed?.ranAt === "string" && parsed.ranAt
+                    ? parsed.ranAt
+                    : null,
+            summary: {
+                total: Number.isFinite(summary?.total) ? summary.total : 0,
+                passed: Number.isFinite(summary?.passed) ? summary.passed : 0,
+                failed: Number.isFinite(summary?.failed) ? summary.failed : 0,
+            },
+            results: rawResults.slice(0, 25).map((entry, index) => ({
+                id:
+                    typeof entry?.id === "string" && entry.id.trim()
+                        ? entry.id.trim()
+                        : `result-${index + 1}`,
+                name:
+                    typeof entry?.name === "string" && entry.name.trim()
+                        ? entry.name.trim().slice(0, 120)
+                        : `Test ${index + 1}`,
+                input: typeof entry?.input === "string" ? entry.input : "",
+                expectedOutput:
+                    typeof entry?.expectedOutput === "string"
+                        ? entry.expectedOutput
+                        : "",
+                actualOutput:
+                    typeof entry?.actualOutput === "string"
+                        ? entry.actualOutput
+                        : "",
+                exitCode: Number.isFinite(entry?.exitCode) ? entry.exitCode : null,
+                runtimeError:
+                    typeof entry?.runtimeError === "string"
+                        ? entry.runtimeError
+                        : null,
+                timedOut: Boolean(entry?.timedOut),
+                passed: Boolean(entry?.passed),
+                line: Number.isFinite(entry?.line) ? entry.line : null,
+            })),
+        };
+    }
+
+    mapAssignmentEnvironment(row) {
+        if (!row?.assignment_environment_id) {
+            return null;
+        }
+
+        const latestTestRun = this.parseLatestTestRun(row.latest_test_run_json);
+
+        return {
+            assignmentEnvironmentId: row.assignment_environment_id,
+            environmentId: row.environment_id,
+            studentId: row.student_id,
+            studentUsername: row.student_username,
+            submissionStatus: row.submission_status || "not_started",
+            submissionUpdatedAt: row.submission_updated_at || null,
+            submittedAt: row.submitted_at || null,
+            reviewedAt: row.reviewed_at || null,
+            latestTestRun,
+            latestTestSummary: latestTestRun.summary,
+            commentsCount: Number.isFinite(row.comments_count)
+                ? row.comments_count
+                : 0,
+        };
+    }
+
+    mapAssignmentFeedbackComment(row) {
+        if (!row) {
+            return null;
+        }
+
+        return {
+            id: row.id,
+            assignmentEnvironmentId: row.assignment_environment_id,
+            assignmentId: row.assignment_id,
+            environmentId: row.environment_id,
+            teacherId: row.teacher_id,
+            teacherUsername: row.teacher_username || "Teacher",
+            fileName: row.file_name,
+            lineNumber: Number.isFinite(row.line_number) ? row.line_number : null,
+            content: row.content || "",
+            createdAt: row.created_at,
+            updatedAt: row.updated_at,
+        };
+    }
+
     normalizeHelpMessage(value) {
         if (typeof value !== "string") {
             return null;
@@ -345,13 +485,9 @@ export class ClassroomService {
                 });
             }
 
-            if (row.assignment_environment_id) {
-                grouped.get(row.assignment_id).environments.push({
-                    assignmentEnvironmentId: row.assignment_environment_id,
-                    environmentId: row.environment_id,
-                    studentId: row.student_id,
-                    studentUsername: row.student_username,
-                });
+            const mappedEnvironment = this.mapAssignmentEnvironment(row);
+            if (mappedEnvironment) {
+                grouped.get(row.assignment_id).environments.push(mappedEnvironment);
             }
         }
 
@@ -939,5 +1075,127 @@ export class ClassroomService {
             environmentId,
             user.userId,
         );
+    }
+
+    async updateAssignmentSubmissionStatus(user, environmentId, payload = {}) {
+        const normalizedEnvironmentId =
+            typeof environmentId === "string" ? environmentId.trim() : "";
+        if (!normalizedEnvironmentId) {
+            throw new ClassroomValidationError("Environment ID is required.");
+        }
+
+        const nextStatus = this.normalizeSubmissionStatus(payload?.status);
+
+        if (user?.role === "student") {
+            const assignmentEnvironment =
+                await this.classroomRepository.findAssignmentEnvironmentForStudent(
+                    normalizedEnvironmentId,
+                    user.userId,
+                );
+            if (!assignmentEnvironment) {
+                throw new ClassroomAuthorizationError(
+                    "You can only update submission state for your assignment environments.",
+                );
+            }
+
+            if (!["in_progress", "submitted"].includes(nextStatus)) {
+                throw new ClassroomAuthorizationError(
+                    "Students can only mark work as in progress or submitted.",
+                );
+            }
+        } else if (user?.role === "teacher") {
+            const assignmentEnvironment =
+                await this.classroomRepository.findAssignmentEnvironmentForTeacher(
+                    normalizedEnvironmentId,
+                    user.userId,
+                );
+            if (!assignmentEnvironment) {
+                throw new ClassroomAuthorizationError(
+                    "Teacher access required for this assignment environment.",
+                );
+            }
+
+            if (!["in_progress", "needs_changes", "submitted"].includes(nextStatus)) {
+                throw new ClassroomAuthorizationError(
+                    "Teachers can mark work in progress, submitted, or needs changes.",
+                );
+            }
+        } else {
+            throw new ClassroomAuthorizationError("Authentication required.");
+        }
+
+        const updated =
+            await this.classroomRepository.updateAssignmentEnvironmentSubmissionStatus(
+                normalizedEnvironmentId,
+                nextStatus,
+            );
+
+        if (!updated) {
+            throw new ClassroomNotFoundError("Assignment environment not found.");
+        }
+
+        const context =
+            await this.classroomRepository.findAssignmentEnvironmentByEnvironmentId(
+                normalizedEnvironmentId,
+            );
+
+        return {
+            assignmentEnvironmentId: updated.id,
+            environmentId: updated.environment_id,
+            assignmentId: updated.assignment_id,
+            studentId: updated.student_id,
+            classId: context?.class_id || null,
+            submissionStatus: updated.submission_status || "not_started",
+            submissionUpdatedAt: updated.submission_updated_at || null,
+            submittedAt: updated.submitted_at || null,
+            reviewedAt: updated.reviewed_at || null,
+            latestTestRun: this.parseLatestTestRun(updated.latest_test_run_json),
+        };
+    }
+
+    async createTeacherFeedbackComment(user, environmentId, payload = {}) {
+        this.ensureTeacher(user);
+
+        const normalizedEnvironmentId =
+            typeof environmentId === "string" ? environmentId.trim() : "";
+        if (!normalizedEnvironmentId) {
+            throw new ClassroomValidationError("Environment ID is required.");
+        }
+
+        const assignmentEnvironment =
+            await this.classroomRepository.findAssignmentEnvironmentForTeacher(
+                normalizedEnvironmentId,
+                user.userId,
+            );
+        if (!assignmentEnvironment) {
+            throw new ClassroomAuthorizationError(
+                "Teacher access required for this assignment environment.",
+            );
+        }
+
+        const created =
+            await this.classroomRepository.createAssignmentFeedbackComment({
+                id: randomUUID(),
+                assignmentEnvironmentId: assignmentEnvironment.id,
+                assignmentId: assignmentEnvironment.assignment_id,
+                environmentId: normalizedEnvironmentId,
+                teacherId: user.userId,
+                fileName: this.normalizeFeedbackFileName(payload?.fileName),
+                lineNumber: this.normalizeFeedbackLineNumber(payload?.lineNumber),
+                content: this.normalizeFeedbackContent(payload?.content),
+            });
+
+        if (!created) {
+            throw new ClassroomValidationError("Could not create comment.");
+        }
+
+        const comments =
+            await this.classroomRepository.listAssignmentFeedbackCommentsForEnvironment(
+                normalizedEnvironmentId,
+            );
+
+        return comments
+            .map((row) => this.mapAssignmentFeedbackComment(row))
+            .filter(Boolean);
     }
 }

@@ -125,10 +125,40 @@ CREATE TABLE IF NOT EXISTS assignment_environments (
     UNIQUE (environment_id)
 );
 
+ALTER TABLE assignment_environments
+    ADD COLUMN IF NOT EXISTS submission_status TEXT NOT NULL DEFAULT 'not_started'
+        CHECK (submission_status IN ('not_started', 'in_progress', 'submitted', 'needs_changes')),
+    ADD COLUMN IF NOT EXISTS submission_updated_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS latest_test_run_json JSONB NOT NULL DEFAULT '{}'::jsonb;
+
 CREATE INDEX IF NOT EXISTS idx_assignment_environments_assignment_id
     ON assignment_environments (assignment_id);
 
 CREATE INDEX IF NOT EXISTS idx_assignment_environments_student_id
     ON assignment_environments (student_id);
+
+CREATE INDEX IF NOT EXISTS idx_assignment_environments_submission_status
+    ON assignment_environments (submission_status);
+
+CREATE TABLE IF NOT EXISTS assignment_feedback_comments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    assignment_environment_id TEXT NOT NULL REFERENCES assignment_environments(id) ON DELETE CASCADE,
+    assignment_id TEXT NOT NULL REFERENCES assignments(id) ON DELETE CASCADE,
+    environment_id TEXT NOT NULL,
+    teacher_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    file_name VARCHAR(160) NOT NULL,
+    line_number INTEGER NOT NULL CHECK (line_number >= 1),
+    content VARCHAR(2000) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_assignment_feedback_comments_environment_created
+    ON assignment_feedback_comments (environment_id, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_assignment_feedback_comments_assignment_environment
+    ON assignment_feedback_comments (assignment_environment_id, created_at);
 
 COMMIT;
