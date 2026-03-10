@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { LoaderCircle } from "lucide-react";
+import { LoaderCircle, SquareTerminal } from "lucide-react";
 
 export default function LoginPage() {
     const router = useRouter();
@@ -46,12 +47,19 @@ export default function LoginPage() {
     };
 
     return (
-        <div className="min-h-screen bg-zinc-950 text-zinc-100">
-            <main className="mx-auto w-full max-w-md px-4 py-10">
-                <section className="rounded-lg border border-zinc-800 bg-zinc-900 p-5">
-                    <h1 className="text-xl font-semibold">Log in</h1>
-                    <p className="mt-1 text-sm text-zinc-400">
-                        Continue to your environment dashboard.
+        <div className="flex min-h-screen items-center justify-center bg-zinc-950 px-4 text-zinc-100">
+            <div className="w-full max-w-sm">
+                <div className="mb-6 text-center">
+                    <div className="mx-auto mb-3 flex size-10 items-center justify-center rounded-xl bg-emerald-500/10 ring-1 ring-emerald-500/20">
+                        <SquareTerminal className="size-5 text-emerald-400" />
+                    </div>
+                    <p className="text-sm text-zinc-500">Sign in to your account</p>
+                </div>
+
+                <section className="rounded-xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl shadow-black/50">
+                    <h1 className="text-base font-semibold text-zinc-100">Log in</h1>
+                    <p className="mt-0.5 text-sm text-zinc-500">
+                        Continue to your environments.
                     </p>
 
                     <form className="mt-5 space-y-3" onSubmit={handleLogin}>
@@ -69,12 +77,12 @@ export default function LoginPage() {
                         <Button
                             type="submit"
                             disabled={isSubmitting}
-                            className="w-full bg-zinc-100 text-zinc-900 hover:bg-zinc-200"
+                            className="w-full bg-zinc-100 text-zinc-900 hover:bg-white"
                         >
                             {isSubmitting ? (
                                 <>
                                     <LoaderCircle className="size-4 animate-spin" />
-                                    Logging in...
+                                    Logging in…
                                 </>
                             ) : (
                                 "Log in"
@@ -83,12 +91,19 @@ export default function LoginPage() {
                     </form>
 
                     {errorMessage && (
-                        <p className="mt-3 rounded border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+                        <p className="mt-3 rounded-lg border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
                             {errorMessage}
                         </p>
                     )}
                 </section>
-            </main>
+
+                <p className="mt-4 text-center text-xs text-zinc-600">
+                    Need an account?{" "}
+                    <Link href="/auth/signup" className="text-zinc-400 hover:text-zinc-200">
+                        Create one
+                    </Link>
+                </p>
+            </div>
         </div>
     );
 }

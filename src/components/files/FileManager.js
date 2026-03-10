@@ -210,24 +210,24 @@ export function FileManager() {
         : files;
 
     return (
-        <div className="flex flex-col gap-2 font-light">
+        <div className="flex flex-col">
             {pinnedInstructionsFile ? (
                 <ContextMenu key={pinnedInstructionsFile.id}>
                     <ContextMenuTrigger>
                         <div
                             style={{ cursor: "pointer" }}
                             onClick={() => changeCurrentFile(pinnedInstructionsFile.id)}
-                            className={`flex gap-3 items-center ${
+                            className={`flex items-center gap-2 rounded px-2 py-1.5 text-sm transition-colors ${
                                 currentFile === pinnedInstructionsFile.id
-                                    ? "font-bold"
-                                    : ""
+                                    ? "bg-zinc-700/60 text-zinc-100"
+                                    : "text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200"
                             }`}
                         >
                             <FontAwesomeIcon
                                 icon={getFileIcon(pinnedInstructionsFile.name)}
-                                className="scale-110"
+                                className="w-3.5 shrink-0 text-zinc-500"
                             />
-                            {getDisplayFileName(pinnedInstructionsFile.name, true)}
+                            <span className="min-w-0 truncate">{getDisplayFileName(pinnedInstructionsFile.name, true)}</span>
                         </div>
                     </ContextMenuTrigger>
                     <ContextMenuContent>
@@ -261,7 +261,7 @@ export function FileManager() {
             ) : null}
 
             {pinnedInstructionsFile ? (
-                <div className="w-full my-3 h-[1px] bg-zinc-700"></div>
+                <div className="mx-2 my-1 h-px bg-zinc-800"></div>
             ) : null}
 
             <NewFileDialog
@@ -277,18 +277,20 @@ export function FileManager() {
                         <div
                             style={{ cursor: "pointer" }}
                             onClick={() => changeCurrentFile(file.id)}
-                            className={`flex gap-3 items-center ${
-                                currentFile === file.id ? "font-bold" : ""
+                            className={`flex items-center gap-2 rounded px-2 py-1.5 text-sm transition-colors ${
+                                currentFile === file.id
+                                    ? "bg-zinc-700/60 text-zinc-100"
+                                    : "text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200"
                             }`}
                         >
                             <FontAwesomeIcon
                                 icon={getFileIcon(file.name)}
-                                className="scale-110"
+                                className="w-3.5 shrink-0 text-zinc-500"
                             />
-                            {getDisplayFileName(
+                            <span className="min-w-0 truncate">{getDisplayFileName(
                                 file.name,
                                 isAssignmentEnvironment && isInstructionsFile(file.name),
-                            )}
+                            )}</span>
                         </div>
                     </ContextMenuTrigger>
                     <ContextMenuContent>
@@ -341,12 +343,12 @@ function NewFileDialog({ newFileOpen, setNewFileOpen, createFile, disabled }) {
         <Dialog open={newFileOpen} onOpenChange={setNewFileOpen}>
             <DialogTrigger asChild>
                 <button
-                    className="flex items-center gap-2 cursor-pointer outline-none"
+                    className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm text-zinc-500 outline-none transition-colors hover:bg-zinc-800/50 hover:text-zinc-300 disabled:cursor-not-allowed disabled:opacity-40"
                     onClick={() => setNewFileOpen(true)}
                     disabled={disabled}
                 >
-                    <FontAwesomeIcon icon={faFileCirclePlus} />
-                    <span>New File</span>
+                    <FontAwesomeIcon icon={faFileCirclePlus} className="w-3.5 shrink-0" />
+                    <span>New file</span>
                 </button>
             </DialogTrigger>
 
@@ -390,7 +392,7 @@ function NewFileDialog({ newFileOpen, setNewFileOpen, createFile, disabled }) {
                         Cancel
                     </Button>
                     <Button
-                        className={"bg-white px-5"}
+                        className="bg-zinc-100 px-5 text-zinc-900 hover:bg-white"
                         onClick={() => createFile(fileName)}
                         disabled={!isValid || fileName.trim().length === 0}
                     >
@@ -524,7 +526,7 @@ function RenameContextWindow({ file, renameFile }) {
                         Cancel
                     </Button>
                     <Button
-                        className={"bg-white px-5"}
+                        className="bg-zinc-100 px-5 text-zinc-900 hover:bg-white"
                         onClick={() => renameEFile()}
                         disabled={
                             !isValid || renamedFileName.trim().length === 0

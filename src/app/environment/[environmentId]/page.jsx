@@ -14,6 +14,7 @@ import {
     LoaderCircle,
     LocateFixed,
     RotateCcw,
+    SlidersHorizontal,
     Square,
     SquareTerminal,
 } from "lucide-react";
@@ -1019,52 +1020,61 @@ export default function EnvironmentPage() {
                             </div>
                         </div>
 
-                        <div className="flex items-center gap-2">
-                            <span className="inline-flex h-8 items-center gap-1 rounded-md border border-zinc-700 px-3 text-xs text-zinc-300">
+                        <div className="flex items-center gap-1.5">
+                            <span className="inline-flex h-8 items-center gap-1.5 rounded-md border border-zinc-800 px-2.5 text-xs text-zinc-400">
                                 <span
                                     className={`size-1.5 rounded-full ${
                                         isReady
                                             ? "bg-emerald-400"
-                                            : "bg-amber-300"
+                                            : cn("bg-amber-300", accessibility.reduceMotion ? "" : "animate-pulse")
                                     }`}
                                 />
                                 {isReady ? "Connected" : "Connecting"}
                             </span>
-                            <Button
-                                onClick={handleCopyShareUrl}
-                                size="sm"
-                                variant="outline"
-                                className="h-8"
-                            >
-                                <Copy className="size-4" />
-                                Share
-                            </Button>
-                            <Button
-                                onClick={() => setIsFocusMode((prev) => !prev)}
-                                size="sm"
-                                variant="outline"
-                                className="h-8"
-                            >
-                                <Focus className="size-4" />
-                                {isFocusMode ? "Exit focus" : "Focus"}
-                            </Button>
-                            <Button
-                                onClick={() => setShowConsole((prev) => !prev)}
-                                size="sm"
-                                variant="outline"
-                                className="h-8"
-                            >
-                                <SquareTerminal className="size-4" />
-                                {showConsole ? "Hide console" : "Show console"}
-                            </Button>
-                            <Button
-                                onClick={() => setIsAccessibilityOpen(true)}
-                                size="sm"
-                                variant="outline"
-                                className="h-8"
-                            >
-                                Accessibility
-                            </Button>
+
+                            <div className="flex items-center gap-0.5">
+                                <Button
+                                    onClick={handleCopyShareUrl}
+                                    size="icon-sm"
+                                    variant="ghost"
+                                    className="text-zinc-500 hover:text-zinc-100"
+                                    title="Copy share URL (⌘⇧S)"
+                                >
+                                    <Copy className="size-4" />
+                                </Button>
+                                <Button
+                                    onClick={() => setIsFocusMode((prev) => !prev)}
+                                    size="icon-sm"
+                                    variant="ghost"
+                                    className={isFocusMode ? "text-zinc-100" : "text-zinc-500 hover:text-zinc-100"}
+                                    title={isFocusMode ? "Exit focus mode (⌘⇧F)" : "Focus mode (⌘⇧F)"}
+                                >
+                                    <Focus className="size-4" />
+                                </Button>
+                                <Button
+                                    onClick={() => setShowConsole((prev) => !prev)}
+                                    size="icon-sm"
+                                    variant="ghost"
+                                    className={showConsole ? "text-zinc-100" : "text-zinc-500 hover:text-zinc-100"}
+                                    title={showConsole ? "Hide console (⌘⇧C)" : "Show console (⌘⇧C)"}
+                                >
+                                    <SquareTerminal className="size-4" />
+                                </Button>
+                                <Button
+                                    onClick={() => setIsAccessibilityOpen(true)}
+                                    size="icon-sm"
+                                    variant="ghost"
+                                    className="text-zinc-500 hover:text-zinc-100"
+                                    title="Accessibility settings (⌘⇧A)"
+                                >
+                                    <SlidersHorizontal className="size-4" />
+                                </Button>
+                            </div>
+
+                            {(assignmentTestCases.length > 0 || canRequestHelp || isAssignmentEnvironment) && (
+                                <div className="mx-0.5 h-4 w-px bg-zinc-700" />
+                            )}
+
                             {assignmentTestCases.length > 0 ? (
                                 <Button
                                     onClick={handleRunAssignmentTests}
@@ -1075,7 +1085,7 @@ export default function EnvironmentPage() {
                                 >
                                     {isRunningTests ? (
                                         <LoaderCircle
-                                            className={`size-4 ${
+                                            className={`size-3.5 ${
                                                 accessibility.reduceMotion
                                                     ? ""
                                                     : "animate-spin"
@@ -1102,9 +1112,10 @@ export default function EnvironmentPage() {
                                         !canResetToTemplate ||
                                         isResettingTemplate
                                     }
-                                    size="sm"
-                                    variant="outline"
-                                    className="h-8"
+                                    size="icon-sm"
+                                    variant="ghost"
+                                    className="text-zinc-500 hover:text-zinc-100"
+                                    title="Reset to template (⌘⇧R)"
                                 >
                                     {isResettingTemplate ? (
                                         <LoaderCircle
@@ -1117,9 +1128,9 @@ export default function EnvironmentPage() {
                                     ) : (
                                         <RotateCcw className="size-4" />
                                     )}
-                                    Reset
                                 </Button>
                             ) : null}
+
                             <Button
                                 onClick={isRunning ? stopProgram : runProgram}
                                 disabled={
@@ -1130,15 +1141,22 @@ export default function EnvironmentPage() {
                                           isReadOnlyEnvironment
                                 }
                                 size="sm"
-                                className="h-8 bg-zinc-100 text-zinc-900 hover:bg-zinc-200"
+                                className={cn(
+                                    "h-8 font-medium",
+                                    isRunning
+                                        ? isStopButtonArmed
+                                            ? "bg-red-500 hover:bg-red-600 text-white border-transparent"
+                                            : "bg-zinc-800 text-zinc-400 border-transparent cursor-wait"
+                                        : "bg-emerald-500 hover:bg-emerald-600 text-white border-transparent",
+                                )}
                             >
                                 {isRunning ? (
                                     <>
                                         {isStopButtonArmed ? (
-                                            <Square className="size-4" />
+                                            <Square className="size-3.5" />
                                         ) : (
                                             <LoaderCircle
-                                                className={`size-4 ${
+                                                className={`size-3.5 ${
                                                     accessibility.reduceMotion
                                                         ? ""
                                                         : "animate-spin"
@@ -1149,7 +1167,7 @@ export default function EnvironmentPage() {
                                     </>
                                 ) : (
                                     <>
-                                        <CirclePlay className="size-4" />
+                                        <CirclePlay className="size-3.5" />
                                         Run
                                     </>
                                 )}
@@ -1158,8 +1176,8 @@ export default function EnvironmentPage() {
                     </div>
 
                     {!isFocusMode ? (
-                        <div className="flex flex-wrap items-center gap-2 border-t border-zinc-800 px-4 py-2 text-xs text-zinc-400">
-                            <span>Collaborators:</span>
+                        <div className="flex flex-wrap items-center gap-2 border-t border-zinc-800 px-4 py-1.5 text-xs text-zinc-500">
+                            <span className="text-zinc-600">Online:</span>
                             {collaboratorEntries.length > 0 ? (
                                 collaboratorEntries.map((entry) => (
                                     <button
@@ -1168,14 +1186,14 @@ export default function EnvironmentPage() {
                                         onClick={() =>
                                             setFollowStudentId(entry.id)
                                         }
-                                        className="rounded border border-zinc-700 bg-zinc-800 px-2 py-0.5 text-zinc-200"
+                                        className="rounded border border-zinc-700/80 bg-zinc-800/60 px-2 py-0.5 text-zinc-300 transition-colors hover:border-zinc-600 hover:text-zinc-100"
                                     >
                                         {entry.userName}
                                     </button>
                                 ))
                             ) : (
-                                <span className="text-zinc-500">
-                                    Just you right now
+                                <span className="text-zinc-600">
+                                    just you
                                 </span>
                             )}
                             {followStudentId ? (
@@ -1198,15 +1216,15 @@ export default function EnvironmentPage() {
                                 </Button>
                             ) : null}
                             {isReadOnlyEnvironment ? (
-                                <span className="ml-auto rounded border border-amber-400/40 bg-amber-600 px-2 py-0.5 text-amber-50">
-                                    View-only mode
+                                <span className="ml-auto rounded border border-amber-400/30 bg-amber-500/15 px-2 py-0.5 text-amber-300">
+                                    View-only
                                 </span>
                             ) : null}
                         </div>
                     ) : null}
                 </header>
 
-                {isAssignmentEnvironment ? (
+                {isAssignmentEnvironment && !isFocusMode ? (
                     <section className="mb-3 rounded-lg border border-zinc-800 bg-zinc-900 p-3 md:p-4">
                         <div className="flex flex-wrap items-start justify-between gap-3">
                             <div className="min-w-0">
@@ -1328,7 +1346,7 @@ export default function EnvironmentPage() {
                                                 <Button
                                                     type="button"
                                                     size="sm"
-                                                    className="h-8 bg-zinc-100 text-zinc-900 hover:bg-zinc-200"
+                                                    className="h-8 bg-zinc-100 text-zinc-900 hover:bg-white"
                                                     disabled={isSubmissionUpdating}
                                                     onClick={() =>
                                                         handleUpdateSubmissionStatus(
@@ -1483,14 +1501,16 @@ export default function EnvironmentPage() {
                             )}
                         >
                             {!isFocusMode && (
-                                <aside className="min-h-0 overflow-auto rounded-lg border border-zinc-800 bg-zinc-900 p-3">
-                                    <div className="mb-3 flex items-center justify-between text-xs text-zinc-500">
-                                        <span>Files</span>
-                                        <span>
+                                <aside className="min-h-0 overflow-auto rounded-lg border border-zinc-800 bg-zinc-900 py-2">
+                                    <div className="mb-1 flex items-center justify-between px-3 py-1">
+                                        <span className="text-xs font-semibold uppercase tracking-wider text-zinc-600">Files</span>
+                                        <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-xs tabular-nums text-zinc-500">
                                             {environment?.files?.length || 0}
                                         </span>
                                     </div>
-                                    <FileManager />
+                                    <div className="px-1">
+                                        <FileManager />
+                                    </div>
                                 </aside>
                             )}
 
@@ -1653,7 +1673,7 @@ export default function EnvironmentPage() {
                             <Button
                                 type="button"
                                 disabled={isSendingHelp}
-                                className="bg-zinc-100 text-zinc-900 hover:bg-zinc-200"
+                                className="bg-zinc-100 text-zinc-900 hover:bg-white"
                                 onClick={handleSubmitHelpRequest}
                             >
                                 {isSendingHelp ? (
@@ -1761,7 +1781,7 @@ export default function EnvironmentPage() {
                             <Button
                                 type="button"
                                 disabled={isSavingFeedback}
-                                className="bg-zinc-100 text-zinc-900 hover:bg-zinc-200"
+                                className="bg-zinc-100 text-zinc-900 hover:bg-white"
                                 onClick={handleCreateTeacherComment}
                             >
                                 {isSavingFeedback ? (
@@ -1864,7 +1884,7 @@ export default function EnvironmentPage() {
                             </Button>
                             <Button
                                 type="button"
-                                className="bg-zinc-100 text-zinc-900 hover:bg-zinc-200"
+                                className="bg-zinc-100 text-zinc-900 hover:bg-white"
                                 onClick={() => setIsAccessibilityOpen(false)}
                             >
                                 Done
@@ -1875,12 +1895,12 @@ export default function EnvironmentPage() {
 
                 <div className="pointer-events-none fixed right-4 top-4 z-[70] flex w-full max-w-sm flex-col gap-2">
                     {metadataError && (
-                        <p className="pointer-events-auto rounded-md border border-red-400/70 bg-red-700 px-3 py-2 text-sm text-red-50 shadow-lg">
+                        <p className="pointer-events-auto rounded-md border border-red-400/30 bg-zinc-900 px-3 py-2 text-sm text-red-300 shadow-lg shadow-black/40">
                             {metadataError}
                         </p>
                     )}
                     {infoMessage && (
-                        <p className="pointer-events-auto rounded-md border border-emerald-400/70 bg-emerald-700 px-3 py-2 text-sm text-emerald-50 shadow-lg">
+                        <p className="pointer-events-auto rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 shadow-lg shadow-black/40">
                             {infoMessage}
                         </p>
                     )}

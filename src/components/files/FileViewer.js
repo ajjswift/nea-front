@@ -1023,24 +1023,26 @@ export function FileViewer({
                 className,
             )}
         >
-            <div className="flex items-center justify-between border-b border-zinc-800 px-3 py-2 text-xs text-zinc-400">
-                <div className="min-w-0 truncate">{currentFile?.name || "No file selected"}</div>
-                <div className="flex items-center gap-1">
+            <div className="flex items-center justify-between border-b border-zinc-800 bg-zinc-900/60 px-3 py-1.5">
+                <div className="min-w-0 truncate text-sm font-medium text-zinc-200">
+                    {currentFile?.name || "No file selected"}
+                </div>
+                <div className="flex items-center gap-0.5">
                     {teacherComments.length > 0 ? (
-                        <span className="rounded border border-amber-400/30 bg-amber-500/10 px-2 py-1 text-amber-200">
+                        <span className="mr-1.5 rounded border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-300">
                             {teacherComments.length} comment
                             {teacherComments.length === 1 ? "" : "s"}
                         </span>
                     ) : null}
                     {isMarkdownFile && (
-                        <>
+                        <div className="mr-1 flex items-center rounded border border-zinc-700 bg-zinc-800/50 p-0.5">
                             <button
                                 type="button"
                                 onClick={() => setMarkdownMode("rich")}
-                                className={`rounded px-2 py-1 ${
+                                className={`rounded px-2 py-0.5 text-xs transition-colors ${
                                     shouldShowRichMarkdown
                                         ? "bg-zinc-700 text-zinc-100"
-                                        : "hover:bg-zinc-800"
+                                        : "text-zinc-500 hover:text-zinc-300"
                                 }`}
                             >
                                 Rich
@@ -1049,16 +1051,16 @@ export function FileViewer({
                                 <button
                                     type="button"
                                     onClick={() => setMarkdownMode("raw")}
-                                    className={`rounded px-2 py-1 ${
+                                    className={`rounded px-2 py-0.5 text-xs transition-colors ${
                                         shouldShowRawEditor
                                             ? "bg-zinc-700 text-zinc-100"
-                                            : "hover:bg-zinc-800"
+                                            : "text-zinc-500 hover:text-zinc-300"
                                     }`}
                                 >
                                     Raw
                                 </button>
                             )}
-                        </>
+                        </div>
                     )}
                     <button
                         type="button"
@@ -1069,9 +1071,9 @@ export function FileViewer({
                             isFormatting ||
                             isLinting
                         }
-                        className="rounded px-2 py-1 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="rounded px-2 py-0.5 text-xs text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300 disabled:cursor-not-allowed disabled:opacity-40"
                     >
-                        {isFormatting ? "Formatting..." : "Format"}
+                        {isFormatting ? "Formatting…" : "Format"}
                     </button>
                     <button
                         type="button"
@@ -1082,9 +1084,9 @@ export function FileViewer({
                             isFormatting ||
                             isLinting
                         }
-                        className="rounded px-2 py-1 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="rounded px-2 py-0.5 text-xs text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300 disabled:cursor-not-allowed disabled:opacity-40"
                     >
-                        {isLinting ? "Linting..." : "Lint"}
+                        {isLinting ? "Linting…" : "Lint"}
                     </button>
                 </div>
             </div>

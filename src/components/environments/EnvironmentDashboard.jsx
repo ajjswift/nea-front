@@ -41,44 +41,55 @@ const emptyFormState = {
 
 function getDueBadgeClass(tone) {
     if (tone === "overdue") {
-        return "border-red-400/50 bg-red-500/15 text-red-200";
+        return "border-red-400/50 bg-red-500/15 text-red-300";
     }
     if (tone === "today") {
-        return "border-amber-400/50 bg-amber-500/15 text-amber-200";
+        return "border-amber-400/50 bg-amber-500/15 text-amber-300";
     }
     if (tone === "tomorrow") {
-        return "border-yellow-400/50 bg-yellow-500/15 text-yellow-200";
+        return "border-yellow-400/50 bg-yellow-500/15 text-yellow-300";
     }
     if (tone === "soon") {
-        return "border-sky-400/50 bg-sky-500/15 text-sky-200";
+        return "border-sky-400/50 bg-sky-500/15 text-sky-300";
     }
-    return "border-zinc-600 bg-zinc-800 text-zinc-300";
+    return "border-zinc-700 bg-zinc-800/60 text-zinc-400";
 }
 
 function getSubmissionBadge(status) {
     if (status === "submitted") {
         return {
             label: "Submitted",
-            className: "border-emerald-400/50 bg-emerald-500/15 text-emerald-200",
+            className: "border-emerald-400/50 bg-emerald-500/15 text-emerald-300",
         };
     }
     if (status === "needs_changes") {
         return {
             label: "Needs changes",
-            className: "border-amber-400/50 bg-amber-500/15 text-amber-200",
+            className: "border-amber-400/50 bg-amber-500/15 text-amber-300",
         };
     }
     if (status === "in_progress") {
         return {
             label: "In progress",
-            className: "border-sky-400/50 bg-sky-500/15 text-sky-200",
+            className: "border-sky-400/50 bg-sky-500/15 text-sky-300",
         };
     }
 
     return {
         label: "Not started",
-        className: "border-zinc-600 bg-zinc-800 text-zinc-300",
+        className: "border-zinc-700 bg-zinc-800/60 text-zinc-400",
     };
+}
+
+function getAssignmentAccentClass(assignment) {
+    const tone = assignment.dueUrgency?.tone;
+    if (tone === "overdue") return "border-l-red-500";
+    if (tone === "today") return "border-l-amber-500";
+    if (tone === "tomorrow") return "border-l-yellow-500/70";
+    if (assignment.submissionStatus === "submitted") return "border-l-emerald-500";
+    if (assignment.submissionStatus === "needs_changes") return "border-l-amber-500";
+    if (assignment.submissionStatus === "in_progress") return "border-l-sky-500/70";
+    return "border-l-zinc-700/50";
 }
 
 export default function EnvironmentDashboard() {
@@ -304,27 +315,30 @@ export default function EnvironmentDashboard() {
 
     return (
         <div className="min-h-screen bg-zinc-950 text-zinc-100">
-            <main className="mx-auto w-full max-w-5xl px-4 py-8 md:px-6 md:py-10">
-                <header className="mb-6 border-b border-zinc-800 pb-4">
-                    <div className="flex flex-wrap items-end justify-between gap-3">
+            <main className="mx-auto w-full max-w-5xl px-4 py-10 md:px-6 md:py-12">
+                <header className="mb-10">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
                         <div>
-                            <h1 className="text-2xl font-semibold tracking-tight">
+                            <h1 className="text-2xl font-bold tracking-tight text-zinc-50">
                                 Environments
                             </h1>
-                            <p className="mt-1 text-sm text-zinc-400">
-                                Create and open your coding environments.
+                            <p className="mt-0.5 text-sm text-zinc-500">
+                                {user?.role === "student"
+                                    ? "Your assignments and personal coding environments."
+                                    : "Create and manage Python coding environments."}
                             </p>
                         </div>
                         {user && (
-                            <div className="flex items-center gap-2">
-                                <p className="text-xs text-zinc-500">
-                                    Signed in as {user.username} ({user.role || "student"})
-                                </p>
+                            <div className="flex items-center gap-3">
+                                <div className="text-right">
+                                    <p className="text-sm font-medium text-zinc-200">{user.username}</p>
+                                    <p className="text-xs capitalize text-zinc-500">{user.role || "student"}</p>
+                                </div>
                                 <Button
                                     asChild
                                     size="sm"
                                     variant="outline"
-                                    className="h-7 text-xs"
+                                    className="h-8"
                                 >
                                     <Link href="/classroom">Classroom</Link>
                                 </Button>
@@ -334,16 +348,16 @@ export default function EnvironmentDashboard() {
                 </header>
 
                 {authRequired ? (
-                    <section className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-                        <h2 className="text-base font-medium text-zinc-100">
+                    <section className="rounded-xl border border-zinc-800 bg-zinc-900 p-6 shadow-lg shadow-black/20">
+                        <h2 className="text-base font-semibold text-zinc-100">
                             Authentication required
                         </h2>
                         <p className="mt-1 text-sm text-zinc-400">
                             Log in to create environments and view your existing ones.
                         </p>
-                        <div className="mt-4 flex gap-2">
-                            <Button asChild size="sm">
-                                <Link href="/auth/login">Go to login</Link>
+                        <div className="mt-5 flex gap-2">
+                            <Button asChild size="sm" className="bg-zinc-100 text-zinc-900 hover:bg-white">
+                                <Link href="/auth/login">Log in</Link>
                             </Button>
                             <Button variant="outline" size="sm" asChild>
                                 <Link href="/auth/signup">Create account</Link>
@@ -352,39 +366,38 @@ export default function EnvironmentDashboard() {
                     </section>
                 ) : user?.role === "student" ? (
                     <div className="space-y-5">
-                        <section className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900">
+                        {/* Assignments section */}
+                        <section className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900 shadow-sm shadow-black/20">
                             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800 px-4 py-3">
                                 <div className="flex items-center gap-3">
-                                    <h2 className="text-sm font-medium text-zinc-100">
+                                    <h2 className="text-sm font-semibold text-zinc-100">
                                         Assignments
                                     </h2>
-                                    <p className="text-xs text-zinc-500">
-                                        {studentAssignments.length} total
-                                    </p>
+                                    <span className="rounded-md bg-zinc-800 px-1.5 py-0.5 text-xs tabular-nums text-zinc-400">
+                                        {studentAssignments.length}
+                                    </span>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                    <Button
-                                        type="button"
-                                        size="sm"
-                                        variant="outline"
-                                        className="h-8 text-xs"
-                                        onClick={() => setIsStudentJoinModalOpen(true)}
-                                        disabled={isLoading || isJoiningClass}
-                                    >
-                                        Join class
-                                    </Button>
-                                </div>
+                                <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 text-xs"
+                                    onClick={() => setIsStudentJoinModalOpen(true)}
+                                    disabled={isLoading || isJoiningClass}
+                                >
+                                    Join class
+                                </Button>
                             </div>
 
-                            <div className="divide-y divide-zinc-800">
+                            <div className="divide-y divide-zinc-800/60">
                                 {isLoading ? (
-                                    <div className="flex items-center gap-2 px-4 py-4 text-sm text-zinc-400">
+                                    <div className="flex items-center gap-2.5 px-4 py-5 text-sm text-zinc-500">
                                         <LoaderCircle className="size-4 animate-spin" />
-                                        Loading assignments...
+                                        Loading assignments…
                                     </div>
                                 ) : studentAssignments.length === 0 ? (
-                                    <p className="px-4 py-4 text-sm text-zinc-400">
-                                        No assignments yet.
+                                    <p className="px-4 py-5 text-sm text-zinc-500">
+                                        No assignments yet. Join a class to get started.
                                     </p>
                                 ) : (
                                     studentAssignments.map((assignment) => {
@@ -399,9 +412,9 @@ export default function EnvironmentDashboard() {
                                         return (
                                             <div
                                                 key={assignment.assignmentId}
-                                                className={`flex flex-wrap items-center justify-between gap-3 px-4 py-4 ${
+                                                className={`border-l-2 pl-3 pr-4 py-4 ${getAssignmentAccentClass(assignment)} ${
                                                     isOpenable
-                                                        ? "cursor-pointer transition-colors hover:bg-zinc-800/40"
+                                                        ? "cursor-pointer transition-colors hover:bg-zinc-800/30"
                                                         : ""
                                                 }`}
                                                 onClick={() => {
@@ -426,79 +439,80 @@ export default function EnvironmentDashboard() {
                                                 role={isOpenable ? "button" : undefined}
                                                 tabIndex={isOpenable ? 0 : undefined}
                                             >
-                                                <div className="min-w-0">
-                                                    <p className="truncate text-sm font-medium text-zinc-100">
-                                                        {assignment.title}
-                                                    </p>
-                                                    <p className="mt-1 line-clamp-2 text-sm text-zinc-400">
-                                                        {assignment.description ||
-                                                            "No description."}
-                                                    </p>
-                                                    <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-zinc-500">
-                                                        <span className="inline-flex items-center gap-1">
-                                                            <Clock3 className="size-3" />
-                                                            {assignment.dueAtLabel}
-                                                        </span>
-                                                        <span>{assignment.className}</span>
-                                                    </div>
-                                                    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                                                        {assignment.dueUrgency ? (
+                                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                                    <div className="min-w-0">
+                                                        <p className="truncate text-sm font-medium text-zinc-100">
+                                                            {assignment.title}
+                                                        </p>
+                                                        <p className="mt-0.5 line-clamp-1 text-sm text-zinc-500">
+                                                            {assignment.description ||
+                                                                "No description."}
+                                                        </p>
+                                                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
                                                             <span
-                                                                className={`rounded border px-2 py-0.5 ${getDueBadgeClass(
-                                                                    assignment.dueUrgency.tone,
-                                                                )}`}
+                                                                className={`rounded border px-1.5 py-0.5 text-xs ${submissionBadge.className}`}
                                                             >
-                                                                {
-                                                                    assignment.dueUrgency
-                                                                        .label
-                                                                }
+                                                                {submissionBadge.label}
                                                             </span>
-                                                        ) : null}
-                                                        <span
-                                                            className={`rounded border px-2 py-0.5 ${submissionBadge.className}`}
-                                                        >
-                                                            {submissionBadge.label}
-                                                        </span>
-                                                        {assignment.testProgressLabel ? (
-                                                            <span className="rounded border border-zinc-700 bg-zinc-800 px-2 py-0.5 text-zinc-300">
-                                                                {
-                                                                    assignment.testProgressLabel
-                                                                }
+                                                            {assignment.dueUrgency ? (
+                                                                <span
+                                                                    className={`rounded border px-1.5 py-0.5 text-xs ${getDueBadgeClass(
+                                                                        assignment.dueUrgency.tone,
+                                                                    )}`}
+                                                                >
+                                                                    {
+                                                                        assignment.dueUrgency
+                                                                            .label
+                                                                    }
+                                                                </span>
+                                                            ) : null}
+                                                            {assignment.testProgressLabel ? (
+                                                                <span className="rounded border border-zinc-700 bg-zinc-800/60 px-1.5 py-0.5 text-xs text-zinc-400">
+                                                                    {
+                                                                        assignment.testProgressLabel
+                                                                    }
+                                                                </span>
+                                                            ) : null}
+                                                            {assignment.commentsCount > 0 ? (
+                                                                <span className="rounded border border-amber-400/40 bg-amber-500/10 px-1.5 py-0.5 text-xs text-amber-300">
+                                                                    {assignment.commentsCount} comment
+                                                                    {assignment.commentsCount === 1
+                                                                        ? ""
+                                                                        : "s"}
+                                                                </span>
+                                                            ) : null}
+                                                        </div>
+                                                        <div className="mt-2 flex items-center gap-3 text-xs text-zinc-600">
+                                                            <span className="inline-flex items-center gap-1">
+                                                                <Clock3 className="size-3" />
+                                                                {assignment.dueAtLabel}
                                                             </span>
-                                                        ) : null}
-                                                        {assignment.commentsCount > 0 ? (
-                                                            <span className="rounded border border-amber-400/40 bg-amber-500/10 px-2 py-0.5 text-amber-200">
-                                                                {assignment.commentsCount} teacher
-                                                                comment
-                                                                {assignment.commentsCount === 1
-                                                                    ? ""
-                                                                    : "s"}
-                                                            </span>
-                                                        ) : null}
+                                                            <span>{assignment.className}</span>
+                                                        </div>
                                                     </div>
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                    <Button
-                                                        type="button"
-                                                        size="sm"
-                                                        variant="outline"
-                                                        className="h-8 text-xs"
-                                                        onClick={(event) => {
-                                                            event.stopPropagation();
-                                                            router.push(
-                                                                assignment.classHref,
-                                                            );
-                                                        }}
-                                                    >
-                                                        Go to class
-                                                    </Button>
-                                                    {isOpenable ? (
-                                                        <ArrowRight className="size-4 text-zinc-500" />
-                                                    ) : (
-                                                        <span className="text-xs text-zinc-500">
-                                                            Environment pending
-                                                        </span>
-                                                    )}
+                                                    <div className="flex shrink-0 items-center gap-2">
+                                                        <Button
+                                                            type="button"
+                                                            size="sm"
+                                                            variant="outline"
+                                                            className="h-7 text-xs"
+                                                            onClick={(event) => {
+                                                                event.stopPropagation();
+                                                                router.push(
+                                                                    assignment.classHref,
+                                                                );
+                                                            }}
+                                                        >
+                                                            Class
+                                                        </Button>
+                                                        {isOpenable ? (
+                                                            <ArrowRight className="size-4 text-zinc-600 transition-transform group-hover:translate-x-0.5" />
+                                                        ) : (
+                                                            <span className="text-xs text-zinc-600">
+                                                                Pending
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </div>
                                         );
@@ -507,36 +521,37 @@ export default function EnvironmentDashboard() {
                             </div>
                         </section>
 
-                        <section className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900">
+                        {/* Personal environments section */}
+                        <section className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900 shadow-sm shadow-black/20">
                             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800 px-4 py-3">
                                 <div className="flex items-center gap-3">
-                                    <h2 className="text-sm font-medium text-zinc-100">
+                                    <h2 className="text-sm font-semibold text-zinc-100">
                                         Personal environments
                                     </h2>
-                                    <p className="text-xs text-zinc-500">
-                                        {personalStats.total} total · {personalStats.active} active
-                                    </p>
+                                    <span className="rounded-md bg-zinc-800 px-1.5 py-0.5 text-xs tabular-nums text-zinc-400">
+                                        {personalStats.total}
+                                    </span>
                                 </div>
                                 <Button
                                     type="button"
                                     size="sm"
-                                    className="h-8 bg-zinc-100 text-xs text-zinc-900 hover:bg-zinc-200"
+                                    className="h-7 bg-zinc-100 text-xs text-zinc-900 hover:bg-white"
                                     onClick={() => setIsStudentCreateModalOpen(true)}
                                     disabled={isLoading || isSubmitting}
                                 >
                                     <Plus className="size-3.5" />
-                                    Create new
+                                    New
                                 </Button>
                             </div>
 
-                            <div className="divide-y divide-zinc-800">
+                            <div className="divide-y divide-zinc-800/60">
                                 {isLoading ? (
-                                    <div className="flex items-center gap-2 px-4 py-4 text-sm text-zinc-400">
+                                    <div className="flex items-center gap-2.5 px-4 py-5 text-sm text-zinc-500">
                                         <LoaderCircle className="size-4 animate-spin" />
-                                        Loading environments...
+                                        Loading…
                                     </div>
                                 ) : personalEnvironments.length === 0 ? (
-                                    <p className="px-4 py-4 text-sm text-zinc-400">
+                                    <p className="px-4 py-5 text-sm text-zinc-500">
                                         No personal environments yet.
                                     </p>
                                 ) : (
@@ -544,25 +559,26 @@ export default function EnvironmentDashboard() {
                                         <Link
                                             key={environment.id}
                                             href={environment.href}
-                                            className="group flex items-center justify-between gap-4 px-4 py-4 transition-colors hover:bg-zinc-800/40"
+                                            className="group flex items-center justify-between gap-4 border-l-2 border-l-zinc-700/40 pl-3 pr-4 py-4 transition-colors hover:bg-zinc-800/30 hover:border-l-zinc-500"
                                         >
                                             <div className="min-w-0">
                                                 <p className="truncate text-sm font-medium text-zinc-100">
                                                     {environment.name}
                                                 </p>
-                                                <p className="mt-1 line-clamp-2 text-sm text-zinc-400">
-                                                    {environment.description}
-                                                </p>
-                                                <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-zinc-500">
+                                                {environment.description ? (
+                                                    <p className="mt-0.5 line-clamp-1 text-sm text-zinc-500">
+                                                        {environment.description}
+                                                    </p>
+                                                ) : null}
+                                                <div className="mt-1.5 flex flex-wrap items-center gap-3 text-xs text-zinc-600">
                                                     <span className="inline-flex items-center gap-1">
                                                         <Clock3 className="size-3" />
                                                         {environment.updatedAtLabel}
                                                     </span>
-                                                    <span>#{environment.shortId}</span>
                                                     <span>{environment.runtimeLabel}</span>
                                                 </div>
                                             </div>
-                                            <ArrowRight className="mt-0.5 size-4 shrink-0 text-zinc-500 transition-transform group-hover:translate-x-0.5" />
+                                            <ArrowRight className="size-4 shrink-0 text-zinc-600 transition-transform group-hover:translate-x-0.5 group-hover:text-zinc-400" />
                                         </Link>
                                     ))
                                 )}
@@ -570,14 +586,14 @@ export default function EnvironmentDashboard() {
                         </section>
                     </div>
                 ) : (
-                    <div className="grid gap-5 lg:grid-cols-[300px_minmax(0,1fr)]">
+                    <div className="grid gap-5 lg:grid-cols-[280px_minmax(0,1fr)]">
                         <div className="space-y-4">
-                            <section className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-                                <h2 className="text-sm font-medium text-zinc-100">
+                            <section className="rounded-xl border border-zinc-800 bg-zinc-900 p-5 shadow-sm shadow-black/20">
+                                <h2 className="text-sm font-semibold text-zinc-100">
                                     New environment
                                 </h2>
-                                <p className="mt-1 text-xs text-zinc-500">
-                                    Name is required. Description is optional.
+                                <p className="mt-0.5 text-xs text-zinc-500">
+                                    Name required · Python 3.11
                                 </p>
                                 <form
                                     className="mt-4 flex flex-col gap-3"
@@ -609,12 +625,12 @@ export default function EnvironmentDashboard() {
                                     <Button
                                         type="submit"
                                         disabled={isSubmitting || isLoading}
-                                        className="justify-center bg-zinc-100 text-zinc-900 hover:bg-zinc-200"
+                                        className="justify-center bg-zinc-100 text-zinc-900 hover:bg-white"
                                     >
                                         {isSubmitting ? (
                                             <>
                                                 <LoaderCircle className="size-4 animate-spin" />
-                                                Creating...
+                                                Creating…
                                             </>
                                         ) : (
                                             <>
@@ -627,24 +643,24 @@ export default function EnvironmentDashboard() {
                             </section>
                         </div>
 
-                        <section className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900">
+                        <section className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900 shadow-sm shadow-black/20">
                             <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
-                                <h2 className="text-sm font-medium text-zinc-100">
+                                <h2 className="text-sm font-semibold text-zinc-100">
                                     Existing environments
                                 </h2>
-                                <p className="text-xs text-zinc-500">
-                                    {stats.total} total · {stats.active} active
-                                </p>
+                                <span className="rounded-md bg-zinc-800 px-1.5 py-0.5 text-xs tabular-nums text-zinc-400">
+                                    {stats.total}
+                                </span>
                             </div>
 
-                            <div className="divide-y divide-zinc-800">
+                            <div className="divide-y divide-zinc-800/60">
                                 {isLoading ? (
-                                    <div className="flex items-center gap-2 px-4 py-4 text-sm text-zinc-400">
+                                    <div className="flex items-center gap-2.5 px-4 py-5 text-sm text-zinc-500">
                                         <LoaderCircle className="size-4 animate-spin" />
-                                        Loading environments...
+                                        Loading…
                                     </div>
                                 ) : environments.length === 0 ? (
-                                    <p className="px-4 py-4 text-sm text-zinc-400">
+                                    <p className="px-4 py-5 text-sm text-zinc-500">
                                         No environments yet.
                                     </p>
                                 ) : (
@@ -652,16 +668,18 @@ export default function EnvironmentDashboard() {
                                         <Link
                                             key={environment.id}
                                             href={environment.href}
-                                            className="group flex items-start justify-between gap-4 px-4 py-4 transition-colors hover:bg-zinc-800/40"
+                                            className="group flex items-start justify-between gap-4 border-l-2 border-l-zinc-700/40 pl-3 pr-4 py-4 transition-colors hover:bg-zinc-800/30 hover:border-l-zinc-500"
                                         >
                                             <div className="min-w-0">
                                                 <p className="truncate text-sm font-medium text-zinc-100">
                                                     {environment.name}
                                                 </p>
-                                                <p className="mt-1 line-clamp-2 text-sm text-zinc-400">
-                                                    {environment.description}
-                                                </p>
-                                                <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-zinc-500">
+                                                {environment.description ? (
+                                                    <p className="mt-0.5 line-clamp-1 text-sm text-zinc-500">
+                                                        {environment.description}
+                                                    </p>
+                                                ) : null}
+                                                <div className="mt-1.5 flex flex-wrap items-center gap-3 text-xs text-zinc-600">
                                                     <span className="inline-flex items-center gap-1">
                                                         <Clock3 className="size-3" />
                                                         {environment.updatedAtLabel}
@@ -670,7 +688,7 @@ export default function EnvironmentDashboard() {
                                                     <span>{environment.runtimeLabel}</span>
                                                 </div>
                                             </div>
-                                            <ArrowRight className="mt-0.5 size-4 shrink-0 text-zinc-500 transition-transform group-hover:translate-x-0.5" />
+                                            <ArrowRight className="mt-0.5 size-4 shrink-0 text-zinc-600 transition-transform group-hover:translate-x-0.5 group-hover:text-zinc-400" />
                                         </Link>
                                     ))
                                 )}
@@ -718,7 +736,7 @@ export default function EnvironmentDashboard() {
                                         <Button
                                             type="submit"
                                             disabled={isJoiningClass}
-                                            className="bg-zinc-100 text-zinc-900 hover:bg-zinc-200"
+                                            className="bg-zinc-100 text-zinc-900 hover:bg-white"
                                         >
                                             {isJoiningClass ? (
                                                 <>
@@ -740,7 +758,7 @@ export default function EnvironmentDashboard() {
                         >
                             <DialogContent className="max-w-md">
                                 <DialogHeader>
-                                    <DialogTitle>Create new environment</DialogTitle>
+                                    <DialogTitle>New environment</DialogTitle>
                                     <DialogDescription>
                                         Add a personal environment outside assignment work.
                                     </DialogDescription>
@@ -783,12 +801,12 @@ export default function EnvironmentDashboard() {
                                         <Button
                                             type="submit"
                                             disabled={isSubmitting}
-                                            className="bg-zinc-100 text-zinc-900 hover:bg-zinc-200"
+                                            className="bg-zinc-100 text-zinc-900 hover:bg-white"
                                         >
                                             {isSubmitting ? (
                                                 <>
                                                     <LoaderCircle className="size-4 animate-spin" />
-                                                    Creating...
+                                                    Creating…
                                                 </>
                                             ) : (
                                                 "Create"
@@ -803,12 +821,12 @@ export default function EnvironmentDashboard() {
 
                 <div className="pointer-events-none fixed right-4 top-4 z-[70] flex w-full max-w-sm flex-col gap-2">
                     {errorMessage && (
-                        <p className="pointer-events-auto rounded-md border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm text-red-200 shadow-lg">
+                        <p className="pointer-events-auto rounded-lg border border-red-400/30 bg-zinc-900 px-3 py-2 text-sm text-red-300 shadow-lg shadow-black/40">
                             {errorMessage}
                         </p>
                     )}
                     {infoMessage && (
-                        <p className="pointer-events-auto rounded-md border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200 shadow-lg">
+                        <p className="pointer-events-auto rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 shadow-lg shadow-black/40">
                             {infoMessage}
                         </p>
                     )}

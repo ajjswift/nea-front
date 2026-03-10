@@ -29,6 +29,14 @@ if (process.env.PGSSLMODE === "require" || process.env.POSTGRES_SSL === "true") 
 
 const pool = new Pool(poolConfig);
 
+function buildBeginStatement(isolationLevel) {
+    if (!isolationLevel) {
+        return "BEGIN";
+    }
+
+    return `BEGIN ISOLATION LEVEL ${isolationLevel}`;
+}
+
 /**
  * Log when the pool connects to the database
  */
@@ -56,6 +64,35 @@ module.exports = {
      * Helper to manually get a client if you need to run a transaction
      */
     getClient: () => pool.connect(),
+
+    /**
+     * Execute a unit of work inside a transaction.
+     * Rolls back on failure and always releases the client.
+     * @param {(client: import("pg").PoolClient) => Promise<any>} callback
+     * @param {{ isolationLevel?: "READ COMMITTED" | "REPEATABLE READ" | "SERIALIZABLE" }} options
+     */
+    withTransaction: async (callback, options = {}) => {
+        const client = await pool.connect();
+
+        try {
+            await client.query(
+                buildBeginStatement(options.isolationLevel || null),
+            );
+            const result = await callback(client);
+            await client.query("COMMIT");
+            return result;
+        } catch (error) {
+            try {
+                await client.query("ROLLBACK");
+            } catch (rollbackError) {
+                console.error("Failed to rollback transaction", rollbackError);
+            }
+
+            throw error;
+        } finally {
+            client.release();
+        }
+    },
 
     /**
      * Gracefully shut down the pool (useful for scripts or tests)

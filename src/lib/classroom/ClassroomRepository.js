@@ -628,7 +628,9 @@ export class ClassroomRepository {
         studentId,
         environmentId,
         executor = this.database,
+        options = {},
     ) {
+        const lockClause = options?.forUpdate ? "FOR UPDATE" : "";
         const result = await executor.query(
             `
                 SELECT
@@ -651,6 +653,7 @@ export class ClassroomRepository {
                 WHERE ae.student_id = $1
                     AND ae.environment_id = $2
                 LIMIT 1
+                ${lockClause}
             `,
             [studentId, environmentId],
         );
@@ -699,7 +702,9 @@ export class ClassroomRepository {
         environmentId,
         studentId,
         executor = this.database,
+        options = {},
     ) {
+        const lockClause = options?.forUpdate ? "FOR UPDATE" : "";
         const result = await executor.query(
             `
                 SELECT
@@ -721,6 +726,7 @@ export class ClassroomRepository {
                 WHERE ae.environment_id = $1
                     AND ae.student_id = $2
                 LIMIT 1
+                ${lockClause}
             `,
             [environmentId, studentId],
         );
@@ -732,7 +738,9 @@ export class ClassroomRepository {
         environmentId,
         teacherId,
         executor = this.database,
+        options = {},
     ) {
+        const lockClause = options?.forUpdate ? "FOR UPDATE" : "";
         const result = await executor.query(
             `
                 SELECT
@@ -754,6 +762,7 @@ export class ClassroomRepository {
                 WHERE ae.environment_id = $1
                     AND a.teacher_id = $2
                 LIMIT 1
+                ${lockClause}
             `,
             [environmentId, teacherId],
         );

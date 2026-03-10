@@ -58,6 +58,9 @@ function createEmptyTestCase() {
         name: "",
         input: "",
         expectedOutput: "",
+        matchMode: "exact",
+        trimOutput: true,
+        points: 1,
     };
 }
 
@@ -67,6 +70,9 @@ function createSampleTestCase() {
         name: "Sample check",
         input: "2\n",
         expectedOutput: "2",
+        matchMode: "exact",
+        trimOutput: true,
+        points: 1,
     };
 }
 
@@ -83,6 +89,15 @@ function normalizeTestCasesForForm(value) {
             typeof entry?.expectedOutput === "string"
                 ? entry.expectedOutput
                 : "",
+        matchMode:
+            entry?.matchMode === "contains" || entry?.matchMode === "regex"
+                ? entry.matchMode
+                : "exact",
+        trimOutput: entry?.trimOutput !== false,
+        points:
+            typeof entry?.points === "number" && entry.points >= 0
+                ? entry.points
+                : 1,
     }));
 
     return normalized.length > 0 ? normalized : [createEmptyTestCase()];
@@ -94,6 +109,9 @@ function testCasesToPayload(value) {
             name: `${testCase.name || ""}`.trim(),
             input: `${testCase.input || ""}`,
             expectedOutput: `${testCase.expectedOutput || ""}`,
+            matchMode: testCase.matchMode,
+            trimOutput: testCase.trimOutput,
+            points: testCase.points,
         }))
         .filter((testCase) => testCase.name || testCase.input || testCase.expectedOutput);
 }
@@ -1147,47 +1165,47 @@ export default function TeacherClassroomDashboard() {
 
     return (
         <div className="min-h-screen bg-zinc-950 text-zinc-100">
-            <main className="mx-auto w-full max-w-6xl px-4 py-8 md:px-6 md:py-10">
-                <header className="mb-6 border-b border-zinc-800 pb-4">
-                    <div className="flex flex-wrap items-end justify-between gap-3">
+            <main className="mx-auto w-full max-w-6xl px-4 py-10 md:px-6 md:py-12">
+                <header className="mb-8">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
                         <div>
                             <Button
                                 asChild
                                 size="sm"
                                 variant="ghost"
-                                className="mb-3 h-8 border border-zinc-800 px-2 text-xs text-zinc-300 hover:bg-zinc-800"
+                                className="mb-3 h-7 px-2 text-xs text-zinc-500 hover:text-zinc-300"
                             >
                                 <Link href="/">
                                     <ArrowLeft className="size-3.5" />
-                                    Back
+                                    Home
                                 </Link>
                             </Button>
-                            <h1 className="text-2xl font-semibold tracking-tight">
+                            <h1 className="text-2xl font-bold tracking-tight text-zinc-50">
                                 Classroom
                             </h1>
-                            <p className="mt-1 text-sm text-zinc-400">
-                                Manage classes, assignments, and student
-                                environments.
+                            <p className="mt-0.5 text-sm text-zinc-500">
+                                Manage classes, assignments, and student environments.
                             </p>
                         </div>
                         {dashboard.user && (
-                            <p className="text-xs text-zinc-500">
-                                Teacher: {dashboard.user.username}
-                            </p>
+                            <div className="text-right">
+                                <p className="text-sm font-medium text-zinc-200">{dashboard.user.username}</p>
+                                <p className="text-xs text-zinc-500">teacher</p>
+                            </div>
                         )}
                     </div>
                 </header>
 
                 {isLoading ? (
-                    <div className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900 p-4 text-sm text-zinc-400">
+                    <div className="flex items-center gap-2.5 rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-5 text-sm text-zinc-500">
                         <LoaderCircle className="size-4 animate-spin" />
                         Loading classroom dashboard...
                     </div>
                 ) : (
                     <div className="grid gap-5 lg:grid-cols-[280px_minmax(0,1fr)]">
                         <aside className="space-y-4">
-                            <section className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-                                <h2 className="text-sm font-medium">
+                            <section className="rounded-xl border border-zinc-800 bg-zinc-900 p-5 shadow-sm shadow-black/20">
+                                <h2 className="text-sm font-semibold text-zinc-100">
                                     New class
                                 </h2>
                                 <form
@@ -1215,7 +1233,7 @@ export default function TeacherClassroomDashboard() {
                                     <Button
                                         type="submit"
                                         disabled={isSaving}
-                                        className="w-full bg-zinc-100 text-zinc-900 hover:bg-zinc-200"
+                                        className="w-full bg-zinc-100 text-zinc-900 hover:bg-white"
                                     >
                                         <Plus className="size-4" />
                                         Create class
@@ -1223,13 +1241,13 @@ export default function TeacherClassroomDashboard() {
                                 </form>
                             </section>
 
-                            <section className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900">
-                                <div className="border-b border-zinc-800 px-4 py-3 text-sm font-medium">
-                                    Classes
+                            <section className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900 shadow-sm shadow-black/20">
+                                <div className="border-b border-zinc-800 px-4 py-3">
+                                    <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Classes</span>
                                 </div>
-                                <div className="divide-y divide-zinc-800">
+                                <div className="py-1">
                                     {dashboard.classes.length === 0 ? (
-                                        <p className="px-4 py-4 text-sm text-zinc-400">
+                                        <p className="px-4 py-4 text-sm text-zinc-500">
                                             No classes yet.
                                         </p>
                                     ) : (
@@ -1240,20 +1258,17 @@ export default function TeacherClassroomDashboard() {
                                                 onClick={() =>
                                                     setSelectedClassId(entry.id)
                                                 }
-                                                className={`w-full px-4 py-3 text-left transition-colors ${
+                                                className={`w-full border-l-2 py-2.5 pl-3 pr-4 text-left transition-colors ${
                                                     selectedClassId === entry.id
-                                                        ? "bg-zinc-800/60"
-                                                        : "hover:bg-zinc-800/30"
+                                                        ? "border-l-emerald-500 bg-zinc-800/60 text-zinc-100"
+                                                        : "border-l-transparent text-zinc-400 hover:border-l-zinc-600 hover:bg-zinc-800/30 hover:text-zinc-200"
                                                 }`}
                                             >
                                                 <p className="text-sm font-medium">
                                                     {entry.name}
                                                 </p>
-                                                <p className="mt-1 text-xs text-zinc-500">
-                                                    {entry.students.length}{" "}
-                                                    students ·{" "}
-                                                    {entry.assignments.length}{" "}
-                                                    assignments
+                                                <p className="mt-0.5 text-xs text-zinc-500">
+                                                    {entry.students.length} student{entry.students.length === 1 ? "" : "s"} · {entry.assignments.length} assignment{entry.assignments.length === 1 ? "" : "s"}
                                                 </p>
                                             </button>
                                         ))
@@ -1264,9 +1279,8 @@ export default function TeacherClassroomDashboard() {
 
                         <section className="space-y-4">
                             {!selectedClass ? (
-                                <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 text-sm text-zinc-400">
-                                    Select a class to manage students and
-                                    assignments.
+                                <div className="flex items-center justify-center rounded-xl border border-zinc-800 bg-zinc-900 p-8 text-sm text-zinc-500">
+                                    Select a class to manage students and assignments.
                                 </div>
                             ) : (
                                 <>
@@ -1444,7 +1458,7 @@ export default function TeacherClassroomDashboard() {
                                                         true,
                                                     )
                                                 }
-                                                className="bg-zinc-100 text-zinc-900 hover:bg-zinc-200"
+                                                className="bg-zinc-100 text-zinc-900 hover:bg-white"
                                             >
                                                 <Plus className="size-4" />
                                                 New assignment
@@ -1753,7 +1767,7 @@ export default function TeacherClassroomDashboard() {
                 open={isCreateAssignmentOpen}
                 onOpenChange={setIsCreateAssignmentOpen}
             >
-                <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto">
+                <DialogContent className="max-h-[85vh] max-w-4xl overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle>New assignment</DialogTitle>
                         <DialogDescription>
@@ -1799,7 +1813,7 @@ export default function TeacherClassroomDashboard() {
                                 }
                                 className={
                                     activeCreateAssignmentTab === "details"
-                                        ? "bg-zinc-100 text-zinc-900 hover:bg-zinc-200"
+                                        ? "bg-zinc-100 text-zinc-900 hover:bg-white"
                                         : ""
                                 }
                                 onClick={(event) => {
@@ -1820,7 +1834,7 @@ export default function TeacherClassroomDashboard() {
                                 }
                                 className={
                                     activeCreateAssignmentTab === "checks"
-                                        ? "bg-zinc-100 text-zinc-900 hover:bg-zinc-200"
+                                        ? "bg-zinc-100 text-zinc-900 hover:bg-white"
                                         : ""
                                 }
                                 onClick={(event) => {
@@ -1840,14 +1854,11 @@ export default function TeacherClassroomDashboard() {
 
                         {activeCreateAssignmentTab === "details" ? (
                             <>
-                                <section className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-                                    <h4 className="text-sm font-medium text-zinc-100">
+                                <section>
+                                    <h4 className="mb-3 text-sm font-medium text-zinc-100">
                                         Basics
                                     </h4>
-                                    <p className="mt-1 text-xs text-zinc-500">
-                                        These are what students will see first.
-                                    </p>
-                                    <div className="mt-3 grid gap-3 md:grid-cols-[1fr_220px]">
+                                    <div className="grid gap-3 md:grid-cols-[1fr_220px]">
                                         <div>
                                             <label className="mb-1 block text-xs text-zinc-400">
                                                 Assignment title
@@ -1887,7 +1898,7 @@ export default function TeacherClassroomDashboard() {
                                     </div>
                                     <div className="mt-3">
                                         <label className="mb-1 block text-xs text-zinc-400">
-                                            Assignment description
+                                            Description
                                         </label>
                                         <Textarea
                                             placeholder="What should students build or practice?"
@@ -1904,16 +1915,18 @@ export default function TeacherClassroomDashboard() {
                                     </div>
                                 </section>
 
-                                <section className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-                                    <h4 className="text-sm font-medium text-zinc-100">
+                                <div className="h-px bg-zinc-800" />
+
+                                <section>
+                                    <h4 className="mb-1 text-sm font-medium text-zinc-100">
                                         Template
                                     </h4>
-                                    <p className="mt-1 text-xs text-zinc-500">
+                                    <p className="mb-3 text-xs text-zinc-500">
                                         Start from a blank environment or your
                                         prepared template.
                                     </p>
-                                    <div className="mt-3 space-y-3">
-                                        <div>
+                                    <div className="flex flex-wrap items-end gap-3">
+                                        <div className="flex-1">
                                             <label
                                                 htmlFor="templateEnvironment"
                                                 className="mb-1 block text-xs text-zinc-400"
@@ -1981,17 +1994,17 @@ export default function TeacherClassroomDashboard() {
                                 </section>
                             </>
                         ) : (
-                            <section className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-                                <h4 className="text-sm font-medium text-zinc-100">
+                            <section>
+                                <h4 className="mb-1 text-sm font-medium text-zinc-100">
                                     Assignment checks
                                 </h4>
-                                <p className="mt-1 text-xs text-zinc-500">
-                                    Define required files and built-in test
+                                <p className="mb-3 text-xs text-zinc-500">
+                                    Define required files and automated test
                                     cases.
                                 </p>
-                                <div className="mt-3">
+                                <div>
                                     <label className="mb-1 block text-xs text-zinc-400">
-                                        Checklist required files
+                                        Required files
                                     </label>
                                     <Input
                                         placeholder="main.py, helpers.py"
@@ -2007,14 +2020,19 @@ export default function TeacherClassroomDashboard() {
                                         }
                                     />
                                     <p className="mt-1 text-xs text-zinc-500">
-                                        Comma separated file names.
+                                        Comma-separated. Students must have these files present to submit.
                                     </p>
                                 </div>
-                                <div className="mt-4 space-y-2 rounded border border-zinc-800 bg-zinc-950/40 p-3">
-                                    <div className="flex flex-wrap items-center justify-between gap-2">
-                                        <p className="text-xs font-medium text-zinc-300">
-                                            Built-in test cases
-                                        </p>
+                                <div className="mt-4">
+                                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                                        <div>
+                                            <p className="text-sm font-medium text-zinc-200">
+                                                Test cases
+                                            </p>
+                                            <p className="text-xs text-zinc-500">
+                                                Run automatically when students click "Run Tests".
+                                            </p>
+                                        </div>
                                         <div className="flex items-center gap-2">
                                             <Button
                                                 type="button"
@@ -2037,11 +2055,11 @@ export default function TeacherClassroomDashboard() {
                                                 }
                                             >
                                                 <Plus className="size-3.5" />
-                                                Add blank
+                                                Add test
                                             </Button>
                                         </div>
                                     </div>
-                                    <div className="space-y-2">
+                                    <div className="space-y-1.5">
                                         {newAssignmentTestCases.map(
                                             (testCase, index) => {
                                                 const isExpanded =
@@ -2054,9 +2072,9 @@ export default function TeacherClassroomDashboard() {
                                                 return (
                                                     <div
                                                         key={testCase.id}
-                                                        className="rounded border border-zinc-800 bg-zinc-950/70"
+                                                        className="rounded-lg border border-zinc-800 bg-zinc-900"
                                                     >
-                                                        <div className="flex items-center justify-between gap-2 px-2 py-1.5">
+                                                        <div className="flex items-center justify-between gap-2 px-3 py-2">
                                                             <button
                                                                 type="button"
                                                                 onClick={() =>
@@ -2066,25 +2084,29 @@ export default function TeacherClassroomDashboard() {
                                                                             : testCase.id,
                                                                     )
                                                                 }
-                                                                className="flex min-w-0 flex-1 items-center gap-2 text-left text-xs text-zinc-200"
+                                                                className="flex min-w-0 flex-1 items-center gap-2 text-left text-sm text-zinc-200"
                                                             >
                                                                 {isExpanded ? (
-                                                                    <ChevronDown className="size-3.5 text-zinc-400" />
+                                                                    <ChevronDown className="size-3.5 shrink-0 text-zinc-400" />
                                                                 ) : (
-                                                                    <ChevronRight className="size-3.5 text-zinc-400" />
+                                                                    <ChevronRight className="size-3.5 shrink-0 text-zinc-400" />
                                                                 )}
-                                                                <span className="truncate">
-                                                                    {
-                                                                        testCaseLabel
-                                                                    }
+                                                                <span className="truncate font-medium">
+                                                                    {testCaseLabel}
                                                                 </span>
+                                                                {!isExpanded && (
+                                                                    <span className="ml-1 truncate text-xs text-zinc-500">
+                                                                        {testCase.matchMode !== "exact" ? testCase.matchMode : ""}
+                                                                        {testCase.points !== 1 ? ` · ${testCase.points}pt` : ""}
+                                                                    </span>
+                                                                )}
                                                             </button>
                                                             <div className="flex items-center gap-1">
                                                                 <Button
                                                                     type="button"
                                                                     size="sm"
                                                                     variant="ghost"
-                                                                    className="h-6 px-2 text-[11px] text-zinc-300 hover:bg-zinc-800"
+                                                                    className="h-7 px-2 text-xs text-zinc-400 hover:text-zinc-200"
                                                                     onClick={() =>
                                                                         duplicateNewAssignmentTestCase(
                                                                             testCase.id,
@@ -2097,7 +2119,7 @@ export default function TeacherClassroomDashboard() {
                                                                     type="button"
                                                                     size="sm"
                                                                     variant="ghost"
-                                                                    className="h-6 px-2 text-[11px] text-red-300 hover:bg-red-500/10"
+                                                                    className="h-7 px-2 text-xs text-red-400 hover:bg-red-500/10 hover:text-red-300"
                                                                     onClick={() =>
                                                                         removeNewAssignmentTestCase(
                                                                             testCase.id,
@@ -2109,63 +2131,111 @@ export default function TeacherClassroomDashboard() {
                                                             </div>
                                                         </div>
                                                         {isExpanded ? (
-                                                            <div className="space-y-2 border-t border-zinc-800 px-2 py-2">
-                                                                <Input
-                                                                    placeholder={`Test ${index + 1} name`}
-                                                                    value={
-                                                                        testCase.name
-                                                                    }
-                                                                    onChange={(
-                                                                        event,
-                                                                    ) =>
-                                                                        updateNewAssignmentTestCase(
-                                                                            testCase.id,
-                                                                            "name",
-                                                                            event
-                                                                                .target
-                                                                                .value,
-                                                                        )
-                                                                    }
-                                                                    maxLength={
-                                                                        120
-                                                                    }
-                                                                />
-                                                                <Textarea
-                                                                    placeholder="Input (optional)"
-                                                                    value={
-                                                                        testCase.input
-                                                                    }
-                                                                    onChange={(
-                                                                        event,
-                                                                    ) =>
-                                                                        updateNewAssignmentTestCase(
-                                                                            testCase.id,
-                                                                            "input",
-                                                                            event
-                                                                                .target
-                                                                                .value,
-                                                                        )
-                                                                    }
-                                                                    className="min-h-16"
-                                                                />
-                                                                <Textarea
-                                                                    placeholder="Expected output"
-                                                                    value={
-                                                                        testCase.expectedOutput
-                                                                    }
-                                                                    onChange={(
-                                                                        event,
-                                                                    ) =>
-                                                                        updateNewAssignmentTestCase(
-                                                                            testCase.id,
-                                                                            "expectedOutput",
-                                                                            event
-                                                                                .target
-                                                                                .value,
-                                                                        )
-                                                                    }
-                                                                    className="min-h-20"
-                                                                />
+                                                            <div className="border-t border-zinc-800 px-3 py-3 space-y-3">
+                                                                <div>
+                                                                    <label className="mb-1 block text-xs text-zinc-400">Test name</label>
+                                                                    <Input
+                                                                        placeholder={`Test ${index + 1}`}
+                                                                        value={testCase.name}
+                                                                        onChange={(event) =>
+                                                                            updateNewAssignmentTestCase(
+                                                                                testCase.id,
+                                                                                "name",
+                                                                                event.target.value,
+                                                                            )
+                                                                        }
+                                                                        maxLength={120}
+                                                                    />
+                                                                </div>
+                                                                <div className="grid gap-3 sm:grid-cols-2">
+                                                                    <div>
+                                                                        <label className="mb-1 block text-xs text-zinc-400">Stdin input</label>
+                                                                        <p className="mb-1.5 text-[11px] text-zinc-600">Each line is fed as a separate response to <code className="font-mono">input()</code></p>
+                                                                        <Textarea
+                                                                            placeholder={"e.g.\nAlice\n25"}
+                                                                            value={testCase.input}
+                                                                            onChange={(event) =>
+                                                                                updateNewAssignmentTestCase(
+                                                                                    testCase.id,
+                                                                                    "input",
+                                                                                    event.target.value,
+                                                                                )
+                                                                            }
+                                                                            className="min-h-24 font-mono text-xs"
+                                                                        />
+                                                                    </div>
+                                                                    <div>
+                                                                        <label className="mb-1 block text-xs text-zinc-400">Expected output</label>
+                                                                        <p className="mb-1.5 text-[11px] text-zinc-600">What the program should print to stdout</p>
+                                                                        <Textarea
+                                                                            placeholder={"e.g.\nHello, Alice!"}
+                                                                            value={testCase.expectedOutput}
+                                                                            onChange={(event) =>
+                                                                                updateNewAssignmentTestCase(
+                                                                                    testCase.id,
+                                                                                    "expectedOutput",
+                                                                                    event.target.value,
+                                                                                )
+                                                                            }
+                                                                            className="min-h-24 font-mono text-xs"
+                                                                        />
+                                                                    </div>
+                                                                </div>
+                                                                <div className="flex flex-wrap items-end gap-3 border-t border-zinc-800 pt-3">
+                                                                    <div>
+                                                                        <label className="mb-1 block text-xs text-zinc-400">Match mode</label>
+                                                                        <select
+                                                                            value={testCase.matchMode}
+                                                                            onChange={(event) =>
+                                                                                updateNewAssignmentTestCase(
+                                                                                    testCase.id,
+                                                                                    "matchMode",
+                                                                                    event.target.value,
+                                                                                )
+                                                                            }
+                                                                            className="h-8 rounded-md border border-zinc-700 bg-zinc-950 px-2 text-xs text-zinc-100"
+                                                                        >
+                                                                            <option value="exact">Exact match</option>
+                                                                            <option value="contains">Output contains</option>
+                                                                            <option value="regex">Regex match</option>
+                                                                        </select>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <input
+                                                                            id={`trim-new-${testCase.id}`}
+                                                                            type="checkbox"
+                                                                            checked={testCase.trimOutput}
+                                                                            onChange={(event) =>
+                                                                                updateNewAssignmentTestCase(
+                                                                                    testCase.id,
+                                                                                    "trimOutput",
+                                                                                    event.target.checked,
+                                                                                )
+                                                                            }
+                                                                            className="accent-zinc-400"
+                                                                        />
+                                                                        <label htmlFor={`trim-new-${testCase.id}`} className="text-xs text-zinc-400 cursor-pointer">
+                                                                            Trim trailing whitespace
+                                                                        </label>
+                                                                    </div>
+                                                                    <div className="ml-auto">
+                                                                        <label className="mb-1 block text-xs text-zinc-400">Points</label>
+                                                                        <Input
+                                                                            type="number"
+                                                                            min={0}
+                                                                            max={100}
+                                                                            value={testCase.points}
+                                                                            onChange={(event) =>
+                                                                                updateNewAssignmentTestCase(
+                                                                                    testCase.id,
+                                                                                    "points",
+                                                                                    Number(event.target.value),
+                                                                                )
+                                                                            }
+                                                                            className="w-20"
+                                                                        />
+                                                                    </div>
+                                                                </div>
                                                             </div>
                                                         ) : null}
                                                     </div>
@@ -2202,7 +2272,7 @@ export default function TeacherClassroomDashboard() {
                                 <Button
                                     type="button"
                                     disabled={!newAssignment.title.trim()}
-                                    className="bg-zinc-100 text-zinc-900 hover:bg-zinc-200"
+                                    className="bg-zinc-100 text-zinc-900 hover:bg-white"
                                     onClick={(event) => {
                                         event.preventDefault();
                                         event.stopPropagation();
@@ -2220,7 +2290,7 @@ export default function TeacherClassroomDashboard() {
                                         isCreatingTemplateEnvironment ||
                                         !newAssignment.title.trim()
                                     }
-                                    className="bg-zinc-100 text-zinc-900 hover:bg-zinc-200"
+                                    className="bg-zinc-100 text-zinc-900 hover:bg-white"
                                 >
                                     {isSaving ? (
                                         <>
@@ -2281,7 +2351,7 @@ export default function TeacherClassroomDashboard() {
                         <Button
                             type="button"
                             disabled={isCreatingTemplateEnvironment}
-                            className="bg-zinc-100 text-zinc-900 hover:bg-zinc-200"
+                            className="bg-zinc-100 text-zinc-900 hover:bg-white"
                             onClick={handleCreateTemplateEnvironment}
                         >
                             {isCreatingTemplateEnvironment ? (
@@ -2305,7 +2375,7 @@ export default function TeacherClassroomDashboard() {
                     }
                 }}
             >
-                <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
+                <DialogContent className="max-h-[85vh] max-w-4xl overflow-y-auto">
                     {!activeAssignment ? null : (
                         <>
                             <DialogHeader>
@@ -2356,7 +2426,7 @@ export default function TeacherClassroomDashboard() {
                                     }
                                     className={
                                         activeAssignmentModalTab === "details"
-                                            ? "bg-zinc-100 text-zinc-900 hover:bg-zinc-200"
+                                            ? "bg-zinc-100 text-zinc-900 hover:bg-white"
                                             : ""
                                     }
                                     onClick={(event) => {
@@ -2377,7 +2447,7 @@ export default function TeacherClassroomDashboard() {
                                     }
                                     className={
                                         activeAssignmentModalTab === "checks"
-                                            ? "bg-zinc-100 text-zinc-900 hover:bg-zinc-200"
+                                            ? "bg-zinc-100 text-zinc-900 hover:bg-white"
                                             : ""
                                     }
                                     onClick={(event) => {
@@ -2398,7 +2468,7 @@ export default function TeacherClassroomDashboard() {
                                     }
                                     className={
                                         activeAssignmentModalTab === "students"
-                                            ? "bg-zinc-100 text-zinc-900 hover:bg-zinc-200"
+                                            ? "bg-zinc-100 text-zinc-900 hover:bg-white"
                                             : ""
                                     }
                                     onClick={(event) => {
@@ -2501,11 +2571,11 @@ export default function TeacherClassroomDashboard() {
                                 >
                                     {activeAssignmentModalTab === "details" ? (
                                         <>
-                                            <section className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-                                                <h4 className="text-sm font-medium text-zinc-100">
+                                            <section>
+                                                <h4 className="mb-3 text-sm font-medium text-zinc-100">
                                                     Basics
                                                 </h4>
-                                                <div className="mt-3 grid gap-3 md:grid-cols-[1fr_220px]">
+                                                <div className="grid gap-3 md:grid-cols-[1fr_220px]">
                                                     <div>
                                                         <label className="mb-1 block text-xs text-zinc-400">
                                                             Assignment title
@@ -2551,7 +2621,7 @@ export default function TeacherClassroomDashboard() {
                                                 </div>
                                                 <div className="mt-3">
                                                     <label className="mb-1 block text-xs text-zinc-400">
-                                                        Assignment description
+                                                        Description
                                                     </label>
                                                     <Textarea
                                                         value={
@@ -2573,28 +2643,33 @@ export default function TeacherClassroomDashboard() {
                                                 </div>
                                             </section>
 
-                                            <section className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-                                                <h4 className="text-sm font-medium text-zinc-100">
+                                            <div className="h-px bg-zinc-800" />
+
+                                            <section>
+                                                <h4 className="mb-1 text-sm font-medium text-zinc-100">
                                                     Template
                                                 </h4>
-                                                <p className="mt-1 text-xs text-zinc-500">
+                                                <p className="mb-3 text-xs text-zinc-500">
                                                     Template is fixed after
                                                     creation.
                                                 </p>
-                                                <p className="mt-3 rounded border border-zinc-700 bg-zinc-950/60 px-3 py-2 text-sm text-zinc-300">
+                                                <p className="rounded border border-zinc-700 bg-zinc-950/60 px-3 py-2 text-sm text-zinc-300">
                                                     {activeAssignment.templateEnvironmentName ||
                                                         "Blank environment"}
                                                 </p>
                                             </section>
                                         </>
                                     ) : (
-                                        <section className="min-w-0 rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-                                            <h4 className="text-sm font-medium text-zinc-100">
+                                        <section className="min-w-0">
+                                            <h4 className="mb-1 text-sm font-medium text-zinc-100">
                                                 Assignment checks
                                             </h4>
-                                            <div className="mt-3">
+                                            <p className="mb-3 text-xs text-zinc-500">
+                                                Define required files and automated test cases.
+                                            </p>
+                                            <div>
                                                 <label className="mb-1 block text-xs text-zinc-400">
-                                                    Checklist required files
+                                                    Required files
                                                 </label>
                                                 <Input
                                                     placeholder="main.py, helpers.py"
@@ -2612,13 +2687,21 @@ export default function TeacherClassroomDashboard() {
                                                         )
                                                     }
                                                 />
+                                                <p className="mt-1 text-xs text-zinc-500">
+                                                    Comma-separated. Students must have these files present to submit.
+                                                </p>
                                             </div>
 
-                                            <div className="mt-4 space-y-2 rounded border border-zinc-800 bg-zinc-950/40 p-3">
-                                                <div className="flex flex-wrap items-center justify-between gap-2">
-                                                    <p className="text-xs font-medium text-zinc-300">
-                                                        Built-in test cases
-                                                    </p>
+                                            <div className="mt-4">
+                                                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                                                    <div>
+                                                        <p className="text-sm font-medium text-zinc-200">
+                                                            Test cases
+                                                        </p>
+                                                        <p className="text-xs text-zinc-500">
+                                                            Run automatically when students click "Run Tests".
+                                                        </p>
+                                                    </div>
                                                     <div className="flex items-center gap-2">
                                                         <Button
                                                             type="button"
@@ -2641,11 +2724,11 @@ export default function TeacherClassroomDashboard() {
                                                             }
                                                         >
                                                             <Plus className="size-3.5" />
-                                                            Add blank
+                                                            Add test
                                                         </Button>
                                                     </div>
                                                 </div>
-                                                <div className="space-y-2">
+                                                <div className="space-y-1.5">
                                                     {assignmentDraftTestCases.map(
                                                         (testCase, index) => {
                                                             const isExpanded =
@@ -2657,12 +2740,10 @@ export default function TeacherClassroomDashboard() {
 
                                                             return (
                                                                 <div
-                                                                    key={
-                                                                        testCase.id
-                                                                    }
-                                                                    className="rounded border border-zinc-800 bg-zinc-950/70"
+                                                                    key={testCase.id}
+                                                                    className="rounded-lg border border-zinc-800 bg-zinc-900"
                                                                 >
-                                                                    <div className="flex items-center justify-between gap-2 px-2 py-1.5">
+                                                                    <div className="flex items-center justify-between gap-2 px-3 py-2">
                                                                         <button
                                                                             type="button"
                                                                             onClick={() =>
@@ -2672,25 +2753,29 @@ export default function TeacherClassroomDashboard() {
                                                                                         : testCase.id,
                                                                                 )
                                                                             }
-                                                                            className="flex min-w-0 flex-1 items-center gap-2 text-left text-xs text-zinc-200"
+                                                                            className="flex min-w-0 flex-1 items-center gap-2 text-left text-sm text-zinc-200"
                                                                         >
                                                                             {isExpanded ? (
-                                                                                <ChevronDown className="size-3.5 text-zinc-400" />
+                                                                                <ChevronDown className="size-3.5 shrink-0 text-zinc-400" />
                                                                             ) : (
-                                                                                <ChevronRight className="size-3.5 text-zinc-400" />
+                                                                                <ChevronRight className="size-3.5 shrink-0 text-zinc-400" />
                                                                             )}
-                                                                            <span className="truncate">
-                                                                                {
-                                                                                    testCaseLabel
-                                                                                }
+                                                                            <span className="truncate font-medium">
+                                                                                {testCaseLabel}
                                                                             </span>
+                                                                            {!isExpanded && (
+                                                                                <span className="ml-1 truncate text-xs text-zinc-500">
+                                                                                    {testCase.matchMode !== "exact" ? testCase.matchMode : ""}
+                                                                                    {testCase.points !== 1 ? ` · ${testCase.points}pt` : ""}
+                                                                                </span>
+                                                                            )}
                                                                         </button>
                                                                         <div className="flex items-center gap-1">
                                                                             <Button
                                                                                 type="button"
                                                                                 size="sm"
                                                                                 variant="ghost"
-                                                                                className="h-6 px-2 text-[11px] text-zinc-300 hover:bg-zinc-800"
+                                                                                className="h-7 px-2 text-xs text-zinc-400 hover:text-zinc-200"
                                                                                 onClick={() =>
                                                                                     duplicateAssignmentDraftTestCase(
                                                                                         testCase.id,
@@ -2703,7 +2788,7 @@ export default function TeacherClassroomDashboard() {
                                                                                 type="button"
                                                                                 size="sm"
                                                                                 variant="ghost"
-                                                                                className="h-6 px-2 text-[11px] text-red-300 hover:bg-red-500/10"
+                                                                                className="h-7 px-2 text-xs text-red-400 hover:bg-red-500/10 hover:text-red-300"
                                                                                 onClick={() =>
                                                                                     removeAssignmentDraftTestCase(
                                                                                         testCase.id,
@@ -2715,63 +2800,111 @@ export default function TeacherClassroomDashboard() {
                                                                         </div>
                                                                     </div>
                                                                     {isExpanded ? (
-                                                                        <div className="space-y-2 border-t border-zinc-800 px-2 py-2">
-                                                                            <Input
-                                                                                placeholder={`Test ${index + 1} name`}
-                                                                                value={
-                                                                                    testCase.name
-                                                                                }
-                                                                                onChange={(
-                                                                                    event,
-                                                                                ) =>
-                                                                                    updateAssignmentDraftTestCase(
-                                                                                        testCase.id,
-                                                                                        "name",
-                                                                                        event
-                                                                                            .target
-                                                                                            .value,
-                                                                                    )
-                                                                                }
-                                                                                maxLength={
-                                                                                    120
-                                                                                }
-                                                                            />
-                                                                            <Textarea
-                                                                                placeholder="Input (optional)"
-                                                                                value={
-                                                                                    testCase.input
-                                                                                }
-                                                                                onChange={(
-                                                                                    event,
-                                                                                ) =>
-                                                                                    updateAssignmentDraftTestCase(
-                                                                                        testCase.id,
-                                                                                        "input",
-                                                                                        event
-                                                                                            .target
-                                                                                            .value,
-                                                                                    )
-                                                                                }
-                                                                                className="min-h-16"
-                                                                            />
-                                                                            <Textarea
-                                                                                placeholder="Expected output"
-                                                                                value={
-                                                                                    testCase.expectedOutput
-                                                                                }
-                                                                                onChange={(
-                                                                                    event,
-                                                                                ) =>
-                                                                                    updateAssignmentDraftTestCase(
-                                                                                        testCase.id,
-                                                                                        "expectedOutput",
-                                                                                        event
-                                                                                            .target
-                                                                                            .value,
-                                                                                    )
-                                                                                }
-                                                                                className="min-h-20"
-                                                                            />
+                                                                        <div className="border-t border-zinc-800 px-3 py-3 space-y-3">
+                                                                            <div>
+                                                                                <label className="mb-1 block text-xs text-zinc-400">Test name</label>
+                                                                                <Input
+                                                                                    placeholder={`Test ${index + 1}`}
+                                                                                    value={testCase.name}
+                                                                                    onChange={(event) =>
+                                                                                        updateAssignmentDraftTestCase(
+                                                                                            testCase.id,
+                                                                                            "name",
+                                                                                            event.target.value,
+                                                                                        )
+                                                                                    }
+                                                                                    maxLength={120}
+                                                                                />
+                                                                            </div>
+                                                                            <div className="grid gap-3 sm:grid-cols-2">
+                                                                                <div>
+                                                                                    <label className="mb-1 block text-xs text-zinc-400">Stdin input</label>
+                                                                                    <p className="mb-1.5 text-[11px] text-zinc-600">Each line is fed as a separate response to <code className="font-mono">input()</code></p>
+                                                                                    <Textarea
+                                                                                        placeholder={"e.g.\nAlice\n25"}
+                                                                                        value={testCase.input}
+                                                                                        onChange={(event) =>
+                                                                                            updateAssignmentDraftTestCase(
+                                                                                                testCase.id,
+                                                                                                "input",
+                                                                                                event.target.value,
+                                                                                            )
+                                                                                        }
+                                                                                        className="min-h-24 font-mono text-xs"
+                                                                                    />
+                                                                                </div>
+                                                                                <div>
+                                                                                    <label className="mb-1 block text-xs text-zinc-400">Expected output</label>
+                                                                                    <p className="mb-1.5 text-[11px] text-zinc-600">What the program should print to stdout</p>
+                                                                                    <Textarea
+                                                                                        placeholder={"e.g.\nHello, Alice!"}
+                                                                                        value={testCase.expectedOutput}
+                                                                                        onChange={(event) =>
+                                                                                            updateAssignmentDraftTestCase(
+                                                                                                testCase.id,
+                                                                                                "expectedOutput",
+                                                                                                event.target.value,
+                                                                                            )
+                                                                                        }
+                                                                                        className="min-h-24 font-mono text-xs"
+                                                                                    />
+                                                                                </div>
+                                                                            </div>
+                                                                            <div className="flex flex-wrap items-end gap-3 border-t border-zinc-800 pt-3">
+                                                                                <div>
+                                                                                    <label className="mb-1 block text-xs text-zinc-400">Match mode</label>
+                                                                                    <select
+                                                                                        value={testCase.matchMode}
+                                                                                        onChange={(event) =>
+                                                                                            updateAssignmentDraftTestCase(
+                                                                                                testCase.id,
+                                                                                                "matchMode",
+                                                                                                event.target.value,
+                                                                                            )
+                                                                                        }
+                                                                                        className="h-8 rounded-md border border-zinc-700 bg-zinc-950 px-2 text-xs text-zinc-100"
+                                                                                    >
+                                                                                        <option value="exact">Exact match</option>
+                                                                                        <option value="contains">Output contains</option>
+                                                                                        <option value="regex">Regex match</option>
+                                                                                    </select>
+                                                                                </div>
+                                                                                <div className="flex items-center gap-2">
+                                                                                    <input
+                                                                                        id={`trim-draft-${testCase.id}`}
+                                                                                        type="checkbox"
+                                                                                        checked={testCase.trimOutput}
+                                                                                        onChange={(event) =>
+                                                                                            updateAssignmentDraftTestCase(
+                                                                                                testCase.id,
+                                                                                                "trimOutput",
+                                                                                                event.target.checked,
+                                                                                            )
+                                                                                        }
+                                                                                        className="accent-zinc-400"
+                                                                                    />
+                                                                                    <label htmlFor={`trim-draft-${testCase.id}`} className="text-xs text-zinc-400 cursor-pointer">
+                                                                                        Trim trailing whitespace
+                                                                                    </label>
+                                                                                </div>
+                                                                                <div className="ml-auto">
+                                                                                    <label className="mb-1 block text-xs text-zinc-400">Points</label>
+                                                                                    <Input
+                                                                                        type="number"
+                                                                                        min={0}
+                                                                                        max={100}
+                                                                                        value={testCase.points}
+                                                                                        onChange={(event) =>
+                                                                                            updateAssignmentDraftTestCase(
+                                                                                                testCase.id,
+                                                                                                "points",
+                                                                                                Number(event.target.value),
+                                                                                            )
+                                                                                        }
+                                                                                        className="w-20"
+                                                                                    />
+                                                                                </div>
+                                                                            </div>
                                                                         </div>
                                                                     ) : null}
                                                                 </div>
@@ -2803,7 +2936,7 @@ export default function TeacherClassroomDashboard() {
                                                     disabled={
                                                         !assignmentDraft.title.trim()
                                                     }
-                                                    className="bg-zinc-100 text-zinc-900 hover:bg-zinc-200"
+                                                    className="bg-zinc-100 text-zinc-900 hover:bg-white"
                                                     onClick={(event) => {
                                                         event.preventDefault();
                                                         event.stopPropagation();
@@ -2859,7 +2992,7 @@ export default function TeacherClassroomDashboard() {
                                                         !assignmentDraft.title.trim() ||
                                                         !hasAssignmentDraftChanges
                                                     }
-                                                    className="bg-zinc-100 text-zinc-900 hover:bg-zinc-200"
+                                                    className="bg-zinc-100 text-zinc-900 hover:bg-white"
                                                 >
                                                     {isSaving ? (
                                                         <>

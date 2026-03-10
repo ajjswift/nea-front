@@ -28,6 +28,33 @@ export class ClassroomService {
         this.joinCodeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     }
 
+    async runInTransaction(callback, options = {}) {
+        if (typeof this.database?.withTransaction === "function") {
+            return this.database.withTransaction(callback, options);
+        }
+
+        const client = await this.database.getClient();
+
+        try {
+            const isolationLevel = options?.isolationLevel
+                ? `BEGIN ISOLATION LEVEL ${options.isolationLevel}`
+                : "BEGIN";
+            await client.query(isolationLevel);
+            const result = await callback(client);
+            await client.query("COMMIT");
+            return result;
+        } catch (error) {
+            try {
+                await client.query("ROLLBACK");
+            } catch (rollbackError) {
+                console.error("Failed to rollback classroom transaction", rollbackError);
+            }
+            throw error;
+        } finally {
+            client.release();
+        }
+    }
+
     ensureTeacher(user) {
         if (!user || user.role !== "teacher") {
             throw new ClassroomAuthorizationError(
@@ -547,40 +574,53 @@ export class ClassroomService {
         this.ensureTeacher(user);
         const usernames = this.normalizeStudentUsernames(payload);
 
-        const users = await this.classroomRepository.listUsersByUsernames(usernames);
-        const userByUsername = new Map(users.map((value) => [value.username, value]));
-
-        const missing = usernames.filter((username) => !userByUsername.has(username));
-        if (missing.length > 0) {
-            throw new ClassroomValidationError(
-                `These usernames were not found: ${missing.join(", ")}`,
+        const students = await this.runInTransaction(async (client) => {
+            const users = await this.classroomRepository.listUsersByUsernames(
+                usernames,
+                client,
             );
-        }
-
-        const nonStudent = users.filter((value) => value.role !== "student");
-        if (nonStudent.length > 0) {
-            throw new ClassroomValidationError(
-                `Only student accounts can be added: ${nonStudent
-                    .map((value) => value.username)
-                    .join(", ")}`,
+            const userByUsername = new Map(
+                users.map((value) => [value.username, value]),
             );
-        }
 
-        const studentIds = users.map((value) => value.id);
-        const updated = await this.classroomRepository.replaceClassEnrollments({
-            classId,
-            teacherId: user.userId,
-            studentIds,
+            const missing = usernames.filter(
+                (username) => !userByUsername.has(username),
+            );
+            if (missing.length > 0) {
+                throw new ClassroomValidationError(
+                    `These usernames were not found: ${missing.join(", ")}`,
+                );
+            }
+
+            const nonStudent = users.filter((value) => value.role !== "student");
+            if (nonStudent.length > 0) {
+                throw new ClassroomValidationError(
+                    `Only student accounts can be added: ${nonStudent
+                        .map((value) => value.username)
+                        .join(", ")}`,
+                );
+            }
+
+            const studentIds = users.map((value) => value.id);
+            const updated = await this.classroomRepository.replaceClassEnrollments(
+                {
+                    classId,
+                    teacherId: user.userId,
+                    studentIds,
+                },
+                client,
+            );
+
+            if (!updated) {
+                throw new ClassroomNotFoundError("Class not found.");
+            }
+
+            return this.classroomRepository.listClassStudents(
+                classId,
+                user.userId,
+                client,
+            );
         });
-
-        if (!updated) {
-            throw new ClassroomNotFoundError("Class not found.");
-        }
-
-        const students = await this.classroomRepository.listClassStudents(
-            classId,
-            user.userId,
-        );
 
         return students.map((student) => ({
             id: student.id,
@@ -624,10 +664,7 @@ export class ClassroomService {
             payload.templateEnvironmentId,
         );
 
-        const client = await this.database.getClient();
-        try {
-            await client.query("BEGIN");
-
+        return this.runInTransaction(async (client) => {
             const ownedClass = await this.classroomRepository.getClassByIdForTeacher(
                 classId,
                 user.userId,
@@ -735,14 +772,8 @@ export class ClassroomService {
                 );
             }
 
-            await client.query("COMMIT");
             return assignment;
-        } catch (error) {
-            await client.query("ROLLBACK");
-            throw error;
-        } finally {
-            client.release();
-        }
+        });
     }
 
     async updateAssignment(user, assignmentId, payload = {}) {
@@ -774,10 +805,7 @@ export class ClassroomService {
     async deleteAssignment(user, assignmentId) {
         this.ensureTeacher(user);
 
-        const client = await this.database.getClient();
-        try {
-            await client.query("BEGIN");
-
+        return this.runInTransaction(async (client) => {
             const assignment = await this.classroomRepository.findAssignmentByIdForTeacher(
                 assignmentId,
                 user.userId,
@@ -811,28 +839,19 @@ export class ClassroomService {
                 throw new ClassroomNotFoundError("Assignment not found.");
             }
 
-            await client.query("COMMIT");
             return {
                 id: deletedAssignment.id,
                 classId: deletedAssignment.class_id,
                 title: deletedAssignment.title,
                 deletedEnvironmentCount,
             };
-        } catch (error) {
-            await client.query("ROLLBACK");
-            throw error;
-        } finally {
-            client.release();
-        }
+        });
     }
 
     async deleteClass(user, classId) {
         this.ensureTeacher(user);
 
-        const client = await this.database.getClient();
-        try {
-            await client.query("BEGIN");
-
+        return this.runInTransaction(async (client) => {
             const classRow = await this.classroomRepository.getClassByIdForTeacher(
                 classId,
                 user.userId,
@@ -865,18 +884,12 @@ export class ClassroomService {
                 throw new ClassroomNotFoundError("Class not found.");
             }
 
-            await client.query("COMMIT");
             return {
                 id: deletedClass.id,
                 name: deletedClass.name,
                 deletedEnvironmentCount,
             };
-        } catch (error) {
-            await client.query("ROLLBACK");
-            throw error;
-        } finally {
-            client.release();
-        }
+        });
     }
 
     async getTeacherDashboard(user) {
@@ -989,63 +1002,72 @@ export class ClassroomService {
             throw new ClassroomValidationError("Environment ID is required.");
         }
 
-        const environmentContext =
-            await this.classroomRepository.findStudentAssignmentEnvironment(
-                user.userId,
-                environmentId,
-            );
-        if (!environmentContext) {
-            throw new ClassroomAuthorizationError(
-                "Help requests are only available in your assignment environments.",
-            );
-        }
-
         const message = this.normalizeHelpMessage(payload?.message);
 
-        const existingOpenRequest =
-            await this.classroomRepository.findOpenHelpRequestForStudentEnvironment(
-                user.userId,
-                environmentId,
+        return this.runInTransaction(async (client) => {
+            const environmentContext =
+                await this.classroomRepository.findStudentAssignmentEnvironment(
+                    user.userId,
+                    environmentId,
+                    client,
+                    { forUpdate: true },
+                );
+            if (!environmentContext) {
+                throw new ClassroomAuthorizationError(
+                    "Help requests are only available in your assignment environments.",
+                );
+            }
+
+            const existingOpenRequest =
+                await this.classroomRepository.findOpenHelpRequestForStudentEnvironment(
+                    user.userId,
+                    environmentId,
+                    client,
+                );
+
+            if (existingOpenRequest) {
+                const updated = await this.classroomRepository.updateHelpRequestMessage(
+                    existingOpenRequest.id,
+                    message,
+                    client,
+                );
+                const enriched = {
+                    ...updated,
+                    class_name: environmentContext.class_name,
+                    assignment_title: environmentContext.assignment_title,
+                    student_username: user.username,
+                };
+                return {
+                    request: this.mapHelpRequest(enriched),
+                    alreadyOpen: true,
+                };
+            }
+
+            const created = await this.classroomRepository.createHelpRequest(
+                {
+                    id: randomUUID(),
+                    classId: environmentContext.class_id,
+                    assignmentId: environmentContext.assignment_id,
+                    studentId: user.userId,
+                    environmentId,
+                    message,
+                    status: "open",
+                },
+                client,
             );
 
-        if (existingOpenRequest) {
-            const updated = await this.classroomRepository.updateHelpRequestMessage(
-                existingOpenRequest.id,
-                message,
-            );
             const enriched = {
-                ...updated,
+                ...created,
                 class_name: environmentContext.class_name,
                 assignment_title: environmentContext.assignment_title,
                 student_username: user.username,
             };
+
             return {
                 request: this.mapHelpRequest(enriched),
-                alreadyOpen: true,
+                alreadyOpen: false,
             };
-        }
-
-        const created = await this.classroomRepository.createHelpRequest({
-            id: randomUUID(),
-            classId: environmentContext.class_id,
-            assignmentId: environmentContext.assignment_id,
-            studentId: user.userId,
-            environmentId,
-            message,
-            status: "open",
         });
-
-        const enriched = {
-            ...created,
-            class_name: environmentContext.class_name,
-            assignment_title: environmentContext.assignment_title,
-            student_username: user.username,
-        };
-
-        return {
-            request: this.mapHelpRequest(enriched),
-            alreadyOpen: false,
-        };
     }
 
     async resolveHelpRequest(user, helpRequestId) {
@@ -1086,71 +1108,83 @@ export class ClassroomService {
 
         const nextStatus = this.normalizeSubmissionStatus(payload?.status);
 
-        if (user?.role === "student") {
-            const assignmentEnvironment =
-                await this.classroomRepository.findAssignmentEnvironmentForStudent(
+        return this.runInTransaction(async (client) => {
+            if (user?.role === "student") {
+                const assignmentEnvironment =
+                    await this.classroomRepository.findAssignmentEnvironmentForStudent(
+                        normalizedEnvironmentId,
+                        user.userId,
+                        client,
+                        { forUpdate: true },
+                    );
+                if (!assignmentEnvironment) {
+                    throw new ClassroomAuthorizationError(
+                        "You can only update submission state for your assignment environments.",
+                    );
+                }
+
+                if (!["in_progress", "submitted"].includes(nextStatus)) {
+                    throw new ClassroomAuthorizationError(
+                        "Students can only mark work as in progress or submitted.",
+                    );
+                }
+            } else if (user?.role === "teacher") {
+                const assignmentEnvironment =
+                    await this.classroomRepository.findAssignmentEnvironmentForTeacher(
+                        normalizedEnvironmentId,
+                        user.userId,
+                        client,
+                        { forUpdate: true },
+                    );
+                if (!assignmentEnvironment) {
+                    throw new ClassroomAuthorizationError(
+                        "Teacher access required for this assignment environment.",
+                    );
+                }
+
+                if (
+                    !["in_progress", "needs_changes", "submitted"].includes(
+                        nextStatus,
+                    )
+                ) {
+                    throw new ClassroomAuthorizationError(
+                        "Teachers can mark work in progress, submitted, or needs changes.",
+                    );
+                }
+            } else {
+                throw new ClassroomAuthorizationError("Authentication required.");
+            }
+
+            const updated =
+                await this.classroomRepository.updateAssignmentEnvironmentSubmissionStatus(
                     normalizedEnvironmentId,
-                    user.userId,
+                    nextStatus,
+                    client,
                 );
-            if (!assignmentEnvironment) {
-                throw new ClassroomAuthorizationError(
-                    "You can only update submission state for your assignment environments.",
-                );
+
+            if (!updated) {
+                throw new ClassroomNotFoundError("Assignment environment not found.");
             }
 
-            if (!["in_progress", "submitted"].includes(nextStatus)) {
-                throw new ClassroomAuthorizationError(
-                    "Students can only mark work as in progress or submitted.",
-                );
-            }
-        } else if (user?.role === "teacher") {
-            const assignmentEnvironment =
-                await this.classroomRepository.findAssignmentEnvironmentForTeacher(
+            const context =
+                await this.classroomRepository.findAssignmentEnvironmentByEnvironmentId(
                     normalizedEnvironmentId,
-                    user.userId,
+                    client,
                 );
-            if (!assignmentEnvironment) {
-                throw new ClassroomAuthorizationError(
-                    "Teacher access required for this assignment environment.",
-                );
-            }
 
-            if (!["in_progress", "needs_changes", "submitted"].includes(nextStatus)) {
-                throw new ClassroomAuthorizationError(
-                    "Teachers can mark work in progress, submitted, or needs changes.",
-                );
-            }
-        } else {
-            throw new ClassroomAuthorizationError("Authentication required.");
-        }
-
-        const updated =
-            await this.classroomRepository.updateAssignmentEnvironmentSubmissionStatus(
-                normalizedEnvironmentId,
-                nextStatus,
-            );
-
-        if (!updated) {
-            throw new ClassroomNotFoundError("Assignment environment not found.");
-        }
-
-        const context =
-            await this.classroomRepository.findAssignmentEnvironmentByEnvironmentId(
-                normalizedEnvironmentId,
-            );
-
-        return {
-            assignmentEnvironmentId: updated.id,
-            environmentId: updated.environment_id,
-            assignmentId: updated.assignment_id,
-            studentId: updated.student_id,
-            classId: context?.class_id || null,
-            submissionStatus: updated.submission_status || "not_started",
-            submissionUpdatedAt: updated.submission_updated_at || null,
-            submittedAt: updated.submitted_at || null,
-            reviewedAt: updated.reviewed_at || null,
-            latestTestRun: this.parseLatestTestRun(updated.latest_test_run_json),
-        };
+            return {
+                assignmentEnvironmentId: updated.id,
+                environmentId: updated.environment_id,
+                assignmentId: updated.assignment_id,
+                studentId: updated.student_id,
+                classId: context?.class_id || null,
+                submissionStatus: updated.submission_status || "not_started",
+                submissionUpdatedAt: updated.submission_updated_at || null,
+                submittedAt: updated.submitted_at || null,
+                reviewedAt: updated.reviewed_at || null,
+                latestTestRun: this.parseLatestTestRun(updated.latest_test_run_json),
+            };
+        });
     }
 
     async createTeacherFeedbackComment(user, environmentId, payload = {}) {
@@ -1162,40 +1196,50 @@ export class ClassroomService {
             throw new ClassroomValidationError("Environment ID is required.");
         }
 
-        const assignmentEnvironment =
-            await this.classroomRepository.findAssignmentEnvironmentForTeacher(
-                normalizedEnvironmentId,
-                user.userId,
-            );
-        if (!assignmentEnvironment) {
-            throw new ClassroomAuthorizationError(
-                "Teacher access required for this assignment environment.",
-            );
-        }
+        return this.runInTransaction(async (client) => {
+            const assignmentEnvironment =
+                await this.classroomRepository.findAssignmentEnvironmentForTeacher(
+                    normalizedEnvironmentId,
+                    user.userId,
+                    client,
+                    { forUpdate: true },
+                );
+            if (!assignmentEnvironment) {
+                throw new ClassroomAuthorizationError(
+                    "Teacher access required for this assignment environment.",
+                );
+            }
 
-        const created =
-            await this.classroomRepository.createAssignmentFeedbackComment({
-                id: randomUUID(),
-                assignmentEnvironmentId: assignmentEnvironment.id,
-                assignmentId: assignmentEnvironment.assignment_id,
-                environmentId: normalizedEnvironmentId,
-                teacherId: user.userId,
-                fileName: this.normalizeFeedbackFileName(payload?.fileName),
-                lineNumber: this.normalizeFeedbackLineNumber(payload?.lineNumber),
-                content: this.normalizeFeedbackContent(payload?.content),
-            });
+            const created =
+                await this.classroomRepository.createAssignmentFeedbackComment(
+                    {
+                        id: randomUUID(),
+                        assignmentEnvironmentId: assignmentEnvironment.id,
+                        assignmentId: assignmentEnvironment.assignment_id,
+                        environmentId: normalizedEnvironmentId,
+                        teacherId: user.userId,
+                        fileName: this.normalizeFeedbackFileName(payload?.fileName),
+                        lineNumber: this.normalizeFeedbackLineNumber(
+                            payload?.lineNumber,
+                        ),
+                        content: this.normalizeFeedbackContent(payload?.content),
+                    },
+                    client,
+                );
 
-        if (!created) {
-            throw new ClassroomValidationError("Could not create comment.");
-        }
+            if (!created) {
+                throw new ClassroomValidationError("Could not create comment.");
+            }
 
-        const comments =
-            await this.classroomRepository.listAssignmentFeedbackCommentsForEnvironment(
-                normalizedEnvironmentId,
-            );
+            const comments =
+                await this.classroomRepository.listAssignmentFeedbackCommentsForEnvironment(
+                    normalizedEnvironmentId,
+                    client,
+                );
 
-        return comments
-            .map((row) => this.mapAssignmentFeedbackComment(row))
-            .filter(Boolean);
+            return comments
+                .map((row) => this.mapAssignmentFeedbackComment(row))
+                .filter(Boolean);
+        });
     }
 }

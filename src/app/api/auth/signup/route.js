@@ -3,8 +3,6 @@ import bcrypt from "bcrypt";
 import db from "@/utils/pg";
 
 export async function POST(request) {
-    let client = null;
-
     try {
         let body = {};
         try {
@@ -43,24 +41,23 @@ export async function POST(request) {
         }
 
         const passwordHash = await bcrypt.hash(password, 12);
-        client = await db.getClient();
-        await client.query("BEGIN");
+        const userId = await db.withTransaction(async (client) => {
+            const createdUser = await client.query(
+                "INSERT INTO users (username, password_hash) VALUES ($1, $2) RETURNING id",
+                [username, passwordHash],
+            );
 
-        const createdUser = await client.query(
-            "INSERT INTO users (username, password_hash) VALUES ($1, $2) RETURNING id",
-            [username, passwordHash],
-        );
+            const nextUserId = createdUser.rows[0].id;
+            await client.query(
+                `
+                    INSERT INTO user_profiles (user_id, role, created_at, updated_at)
+                    VALUES ($1, $2, NOW(), NOW())
+                `,
+                [nextUserId, role],
+            );
 
-        const userId = createdUser.rows[0].id;
-        await client.query(
-            `
-                INSERT INTO user_profiles (user_id, role, created_at, updated_at)
-                VALUES ($1, $2, NOW(), NOW())
-            `,
-            [userId, role],
-        );
-
-        await client.query("COMMIT");
+            return nextUserId;
+        });
 
         return NextResponse.json(
             {
@@ -71,9 +68,6 @@ export async function POST(request) {
             { status: 201 },
         );
     } catch (error) {
-        if (client) {
-            await client.query("ROLLBACK");
-        }
         console.error("Registration Error:", error);
 
         // Handle unique constraint violation (e.g., username already exists)
@@ -97,7 +91,5 @@ export async function POST(request) {
             { error: "Internal Server Error" },
             { status: 500 },
         );
-    } finally {
-        client?.release();
     }
 }
