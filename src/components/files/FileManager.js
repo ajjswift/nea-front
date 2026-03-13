@@ -2,6 +2,7 @@ import { useEnvironment } from "@/layout/EnvironmentLayout";
 import { getFileIcon } from "./fileUtils";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
+    faDownload,
     faFileCirclePlus,
     faTrash,
     faUpload,
@@ -137,6 +138,25 @@ function buildImportedFilePayload(id, name, buffer) {
     };
 }
 
+function base64ToBlob(base64Value) {
+    const binary = atob(base64Value);
+    const chunkSize = 0x8000;
+    const arrays = [];
+
+    for (let index = 0; index < binary.length; index += chunkSize) {
+        const chunk = binary.slice(index, index + chunkSize);
+        const bytes = new Uint8Array(chunk.length);
+
+        for (let offset = 0; offset < chunk.length; offset += 1) {
+            bytes[offset] = chunk.charCodeAt(offset);
+        }
+
+        arrays.push(bytes);
+    }
+
+    return new Blob(arrays);
+}
+
 export function FileManager() {
     const { environment, setEnvironment } = useEnvironment();
     const [newFileOpen, setNewFileOpen] = useState(false);
@@ -153,6 +173,26 @@ export function FileManager() {
 
     const changeCurrentFile = (id) => {
         setEnvironment((prev) => ({ ...prev, currentFile: id }));
+    };
+
+    const downloadFile = (file) => {
+        if (!file?.name) {
+            return;
+        }
+
+        const blob =
+            file?.rawData?.encoding === "base64" &&
+            typeof file?.rawData?.value === "string"
+                ? base64ToBlob(file.rawData.value)
+                : new Blob([typeof file?.content === "string" ? file.content : ""]);
+        const downloadUrl = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = downloadUrl;
+        anchor.download = file.name;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(downloadUrl);
     };
 
     const createFile = (fileName) => {
@@ -404,6 +444,12 @@ export function FileManager() {
                         </div>
                     </ContextMenuTrigger>
                     <ContextMenuContent>
+                        <ContextMenuItem
+                            onSelect={() => downloadFile(pinnedInstructionsFile)}
+                        >
+                            <FontAwesomeIcon icon={faDownload} className="w-3.5 shrink-0" />
+                            Download
+                        </ContextMenuItem>
                         {isReadOnlyInstructions &&
                         isInstructionsFile(pinnedInstructionsFile.name) ? (
                             <ContextMenuItem disabled>
@@ -490,6 +536,10 @@ export function FileManager() {
                         </div>
                     </ContextMenuTrigger>
                     <ContextMenuContent>
+                        <ContextMenuItem onSelect={() => downloadFile(file)}>
+                            <FontAwesomeIcon icon={faDownload} className="w-3.5 shrink-0" />
+                            Download
+                        </ContextMenuItem>
                         {isReadOnlyInstructions &&
                         isInstructionsFile(file.name) ? (
                             <ContextMenuItem disabled>
