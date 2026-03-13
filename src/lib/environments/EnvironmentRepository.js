@@ -113,4 +113,49 @@ export class EnvironmentRepository {
 
         return EnvironmentEntity.fromRow(result.rows[0]);
     }
+
+    async updateForUser(environmentId, userId, { name, description }) {
+        const result = await this.database.query(
+            `
+                UPDATE environments
+                SET
+                    name = $3,
+                    description = $4,
+                    updated_at = NOW()
+                WHERE id = $1
+                    AND user_id = $2
+                RETURNING
+                    id,
+                    user_id,
+                    name,
+                    description,
+                    runtime,
+                    status,
+                    created_at,
+                    updated_at,
+                    last_opened_at
+            `,
+            [environmentId, userId, name, description],
+        );
+
+        if (!result.rows.length) {
+            return null;
+        }
+
+        return EnvironmentEntity.fromRow(result.rows[0]);
+    }
+
+    async deleteForUser(environmentId, userId) {
+        const result = await this.database.query(
+            `
+                DELETE FROM environments
+                WHERE id = $1
+                    AND user_id = $2
+                RETURNING id
+            `,
+            [environmentId, userId],
+        );
+
+        return result.rows.length > 0;
+    }
 }

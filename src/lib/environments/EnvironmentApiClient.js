@@ -19,6 +19,14 @@ export class EnvironmentApiClient extends BaseApiClient {
         return this.sendRequest("GET", `/${environmentId}`);
     }
 
+    async updateEnvironment(environmentId, payload) {
+        return this.sendRequest("PATCH", `/${environmentId}`, payload);
+    }
+
+    async deleteEnvironment(environmentId) {
+        return this.sendRequest("DELETE", `/${environmentId}`);
+    }
+
     async resetEnvironmentToTemplate(environmentId) {
         return this.sendRequest("POST", `/${environmentId}/reset-template`);
     }

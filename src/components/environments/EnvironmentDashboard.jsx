@@ -7,11 +7,19 @@ import {
     ArrowRight,
     Clock3,
     LoaderCircle,
+    PencilLine,
     Plus,
+    Trash2,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import {
+    ContextMenu,
+    ContextMenuContent,
+    ContextMenuItem,
+    ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import {
     Dialog,
     DialogContent,
@@ -20,6 +28,16 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
     ApiError,
     EnvironmentApiClient,
@@ -108,6 +126,12 @@ export default function EnvironmentDashboard() {
     const [isStudentJoinModalOpen, setIsStudentJoinModalOpen] = useState(false);
     const [isStudentCreateModalOpen, setIsStudentCreateModalOpen] = useState(false);
     const [studentCreateForm, setStudentCreateForm] = useState(emptyFormState);
+    const [selectedPersonalEnvironment, setSelectedPersonalEnvironment] = useState(null);
+    const [renameEnvironmentName, setRenameEnvironmentName] = useState("");
+    const [isRenameEnvironmentOpen, setIsRenameEnvironmentOpen] = useState(false);
+    const [isDeleteEnvironmentOpen, setIsDeleteEnvironmentOpen] = useState(false);
+    const [isEnvironmentActionPending, setIsEnvironmentActionPending] =
+        useState(false);
 
     const stats = useMemo(() => {
         return {
@@ -217,6 +241,21 @@ export default function EnvironmentDashboard() {
         }
     }, [isStudentCreateModalOpen, isSubmitting]);
 
+    useEffect(() => {
+        if (
+            !isRenameEnvironmentOpen &&
+            !isDeleteEnvironmentOpen &&
+            !isEnvironmentActionPending
+        ) {
+            setRenameEnvironmentName("");
+            setSelectedPersonalEnvironment(null);
+        }
+    }, [
+        isDeleteEnvironmentOpen,
+        isEnvironmentActionPending,
+        isRenameEnvironmentOpen,
+    ]);
+
     const handleCreateEnvironment = async (event) => {
         event.preventDefault();
         const normalizedName = formState.name.trim();
@@ -310,6 +349,94 @@ export default function EnvironmentDashboard() {
             setErrorMessage(error.message || "Could not create environment.");
         } finally {
             setIsSubmitting(false);
+        }
+    };
+
+    const openRenameEnvironmentDialog = (environment) => {
+        setSelectedPersonalEnvironment(environment);
+        setRenameEnvironmentName(environment?.name || "");
+        setIsRenameEnvironmentOpen(true);
+        setIsDeleteEnvironmentOpen(false);
+        setErrorMessage("");
+        setInfoMessage("");
+    };
+
+    const openDeleteEnvironmentDialog = (environment) => {
+        setSelectedPersonalEnvironment(environment);
+        setIsDeleteEnvironmentOpen(true);
+        setIsRenameEnvironmentOpen(false);
+        setErrorMessage("");
+        setInfoMessage("");
+    };
+
+    const handleRenameEnvironment = async (event) => {
+        event.preventDefault();
+
+        const environmentId = selectedPersonalEnvironment?.id;
+        const normalizedName = renameEnvironmentName.trim();
+
+        if (!environmentId) {
+            return;
+        }
+
+        if (!normalizedName) {
+            setErrorMessage("Environment name is required.");
+            return;
+        }
+
+        setIsEnvironmentActionPending(true);
+        setErrorMessage("");
+        setInfoMessage("");
+
+        try {
+            const payload = await environmentApiClient.updateEnvironment(
+                environmentId,
+                { name: normalizedName },
+            );
+            const updatedEnvironment = EnvironmentViewModel.fromApi(
+                payload.environment,
+            );
+
+            setEnvironments((previous) =>
+                previous.map((environment) =>
+                    environment.id === updatedEnvironment.id
+                        ? updatedEnvironment
+                        : environment,
+                ),
+            );
+            setIsRenameEnvironmentOpen(false);
+            setSelectedPersonalEnvironment(null);
+            setRenameEnvironmentName("");
+            setInfoMessage("Environment renamed.");
+        } catch (error) {
+            setErrorMessage(error.message || "Could not rename environment.");
+        } finally {
+            setIsEnvironmentActionPending(false);
+        }
+    };
+
+    const handleDeleteEnvironment = async () => {
+        const environmentId = selectedPersonalEnvironment?.id;
+        if (!environmentId) {
+            return;
+        }
+
+        setIsEnvironmentActionPending(true);
+        setErrorMessage("");
+        setInfoMessage("");
+
+        try {
+            await environmentApiClient.deleteEnvironment(environmentId);
+            setEnvironments((previous) =>
+                previous.filter((environment) => environment.id !== environmentId),
+            );
+            setIsDeleteEnvironmentOpen(false);
+            setSelectedPersonalEnvironment(null);
+            setInfoMessage("Environment deleted.");
+        } catch (error) {
+            setErrorMessage(error.message || "Could not delete environment.");
+        } finally {
+            setIsEnvironmentActionPending(false);
         }
     };
 
@@ -556,30 +683,56 @@ export default function EnvironmentDashboard() {
                                     </p>
                                 ) : (
                                     personalEnvironments.map((environment) => (
-                                        <Link
-                                            key={environment.id}
-                                            href={environment.href}
-                                            className="group flex items-center justify-between gap-4 border-l-2 border-l-zinc-700/40 pl-3 pr-4 py-4 transition-colors hover:bg-zinc-800/30 hover:border-l-zinc-500"
-                                        >
-                                            <div className="min-w-0">
-                                                <p className="truncate text-sm font-medium text-zinc-100">
-                                                    {environment.name}
-                                                </p>
-                                                {environment.description ? (
-                                                    <p className="mt-0.5 line-clamp-1 text-sm text-zinc-500">
-                                                        {environment.description}
-                                                    </p>
-                                                ) : null}
-                                                <div className="mt-1.5 flex flex-wrap items-center gap-3 text-xs text-zinc-600">
-                                                    <span className="inline-flex items-center gap-1">
-                                                        <Clock3 className="size-3" />
-                                                        {environment.updatedAtLabel}
-                                                    </span>
-                                                    <span>{environment.runtimeLabel}</span>
-                                                </div>
-                                            </div>
-                                            <ArrowRight className="size-4 shrink-0 text-zinc-600 transition-transform group-hover:translate-x-0.5 group-hover:text-zinc-400" />
-                                        </Link>
+                                        <ContextMenu key={environment.id}>
+                                            <ContextMenuTrigger asChild>
+                                                <Link
+                                                    href={environment.href}
+                                                    className="group flex items-center justify-between gap-4 border-l-2 border-l-zinc-700/40 pl-3 pr-4 py-4 transition-colors hover:bg-zinc-800/30 hover:border-l-zinc-500"
+                                                >
+                                                    <div className="min-w-0">
+                                                        <p className="truncate text-sm font-medium text-zinc-100">
+                                                            {environment.name}
+                                                        </p>
+                                                        {environment.description ? (
+                                                            <p className="mt-0.5 line-clamp-1 text-sm text-zinc-500">
+                                                                {environment.description}
+                                                            </p>
+                                                        ) : null}
+                                                        <div className="mt-1.5 flex flex-wrap items-center gap-3 text-xs text-zinc-600">
+                                                            <span className="inline-flex items-center gap-1">
+                                                                <Clock3 className="size-3" />
+                                                                {environment.updatedAtLabel}
+                                                            </span>
+                                                            <span>{environment.runtimeLabel}</span>
+                                                        </div>
+                                                    </div>
+                                                    <ArrowRight className="size-4 shrink-0 text-zinc-600 transition-transform group-hover:translate-x-0.5 group-hover:text-zinc-400" />
+                                                </Link>
+                                            </ContextMenuTrigger>
+                                            <ContextMenuContent>
+                                                <ContextMenuItem
+                                                    onSelect={() =>
+                                                        openRenameEnvironmentDialog(
+                                                            environment,
+                                                        )
+                                                    }
+                                                >
+                                                    <PencilLine className="size-4" />
+                                                    Rename
+                                                </ContextMenuItem>
+                                                <ContextMenuItem
+                                                    variant="destructive"
+                                                    onSelect={() =>
+                                                        openDeleteEnvironmentDialog(
+                                                            environment,
+                                                        )
+                                                    }
+                                                >
+                                                    <Trash2 className="size-4" />
+                                                    Delete
+                                                </ContextMenuItem>
+                                            </ContextMenuContent>
+                                        </ContextMenu>
                                     ))
                                 )}
                             </div>
@@ -816,6 +969,100 @@ export default function EnvironmentDashboard() {
                                 </form>
                             </DialogContent>
                         </Dialog>
+
+                        <Dialog
+                            open={isRenameEnvironmentOpen}
+                            onOpenChange={setIsRenameEnvironmentOpen}
+                        >
+                            <DialogContent className="max-w-md">
+                                <DialogHeader>
+                                    <DialogTitle>Rename environment</DialogTitle>
+                                    <DialogDescription>
+                                        Update the name of this personal environment.
+                                    </DialogDescription>
+                                </DialogHeader>
+                                <form
+                                    onSubmit={handleRenameEnvironment}
+                                    className="flex flex-col gap-3"
+                                >
+                                    <Input
+                                        placeholder="Environment name"
+                                        value={renameEnvironmentName}
+                                        onChange={(event) =>
+                                            setRenameEnvironmentName(
+                                                event.target.value,
+                                            )
+                                        }
+                                        maxLength={80}
+                                        required
+                                    />
+                                    <DialogFooter>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={() =>
+                                                setIsRenameEnvironmentOpen(false)
+                                            }
+                                        >
+                                            Cancel
+                                        </Button>
+                                        <Button
+                                            type="submit"
+                                            disabled={isEnvironmentActionPending}
+                                            className="bg-zinc-100 text-zinc-900 hover:bg-white"
+                                        >
+                                            {isEnvironmentActionPending ? (
+                                                <>
+                                                    <LoaderCircle className="size-4 animate-spin" />
+                                                    Saving…
+                                                </>
+                                            ) : (
+                                                "Save"
+                                            )}
+                                        </Button>
+                                    </DialogFooter>
+                                </form>
+                            </DialogContent>
+                        </Dialog>
+
+                        <AlertDialog
+                            open={isDeleteEnvironmentOpen}
+                            onOpenChange={setIsDeleteEnvironmentOpen}
+                        >
+                            <AlertDialogContent size="sm">
+                                <AlertDialogHeader>
+                                    <AlertDialogTitle>
+                                        Delete environment?
+                                    </AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                        {selectedPersonalEnvironment?.name
+                                            ? `This will permanently remove "${selectedPersonalEnvironment.name}".`
+                                            : "This will permanently remove this environment."}
+                                    </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                    <AlertDialogCancel
+                                        disabled={isEnvironmentActionPending}
+                                    >
+                                        Cancel
+                                    </AlertDialogCancel>
+                                    <AlertDialogAction
+                                        variant="destructive"
+                                        disabled={isEnvironmentActionPending}
+                                        onClick={handleDeleteEnvironment}
+                                    >
+                                        {isEnvironmentActionPending ? (
+                                            <>
+                                                <LoaderCircle className="size-4 animate-spin" />
+                                                Deleting…
+                                            </>
+                                        ) : (
+                                            "Delete"
+                                        )}
+                                    </AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
                     </>
                 )}
 

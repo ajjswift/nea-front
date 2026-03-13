@@ -79,4 +79,29 @@ export class EnvironmentService {
             status: "active",
         });
     }
+
+    async renameForUser(userId, environmentId, payload = {}) {
+        const existingEnvironment = await this.getForUser(userId, environmentId);
+        if (!existingEnvironment) {
+            return null;
+        }
+
+        const name = this.normalizeName(payload.name);
+        if (!name) {
+            throw new ValidationError("Environment name is required.");
+        }
+
+        if (name.length > 80) {
+            throw new ValidationError("Environment name must be 80 characters or fewer.");
+        }
+
+        return this.environmentRepository.updateForUser(environmentId, userId, {
+            name,
+            description: existingEnvironment.description,
+        });
+    }
+
+    async deleteForUser(userId, environmentId) {
+        return this.environmentRepository.deleteForUser(environmentId, userId);
+    }
 }

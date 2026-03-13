@@ -380,3 +380,122 @@ export async function GET(request, { params }) {
         );
     }
 }
+
+export async function PATCH(request, { params }) {
+    try {
+        const user = await sessionService.getAuthenticatedUser(request);
+        if (!user) {
+            return NextResponse.json(
+                { error: "Authentication required." },
+                { status: 401 },
+            );
+        }
+
+        const resolvedParams = await params;
+        const rawEnvironmentId = resolvedParams?.environmentId;
+        const environmentId = Array.isArray(rawEnvironmentId)
+            ? rawEnvironmentId[0]
+            : rawEnvironmentId;
+
+        if (!environmentId) {
+            return NextResponse.json(
+                { error: "Environment ID is required." },
+                { status: 400 },
+            );
+        }
+
+        let body = {};
+        try {
+            body = await request.json();
+        } catch {
+            body = {};
+        }
+
+        const environment = await environmentService.renameForUser(
+            user.userId,
+            environmentId,
+            body,
+        );
+
+        if (!environment) {
+            return NextResponse.json(
+                { error: "Environment not found." },
+                { status: 404 },
+            );
+        }
+
+        await frontendCacheInvalidator.invalidateEnvironmentForUser(user.userId);
+
+        return NextResponse.json(
+            { environment: environment.toJSON() },
+            { status: 200 },
+        );
+    } catch (error) {
+        console.error("Failed to update environment:", error);
+
+        if (error?.name === "ValidationError") {
+            return NextResponse.json({ error: error.message }, { status: 400 });
+        }
+
+        if (isMissingTableError(error)) {
+            return missingTableResponse();
+        }
+
+        return NextResponse.json(
+            { error: "Internal Server Error" },
+            { status: 500 },
+        );
+    }
+}
+
+export async function DELETE(request, { params }) {
+    try {
+        const user = await sessionService.getAuthenticatedUser(request);
+        if (!user) {
+            return NextResponse.json(
+                { error: "Authentication required." },
+                { status: 401 },
+            );
+        }
+
+        const resolvedParams = await params;
+        const rawEnvironmentId = resolvedParams?.environmentId;
+        const environmentId = Array.isArray(rawEnvironmentId)
+            ? rawEnvironmentId[0]
+            : rawEnvironmentId;
+
+        if (!environmentId) {
+            return NextResponse.json(
+                { error: "Environment ID is required." },
+                { status: 400 },
+            );
+        }
+
+        const deleted = await environmentService.deleteForUser(
+            user.userId,
+            environmentId,
+        );
+
+        if (!deleted) {
+            return NextResponse.json(
+                { error: "Environment not found." },
+                { status: 404 },
+            );
+        }
+
+        await frontendCacheInvalidator.invalidateEnvironmentForUser(user.userId);
+
+        return NextResponse.json({ ok: true }, { status: 200 });
+    } catch (error) {
+        console.error("Failed to delete environment:", error);
+
+        if (isMissingTableError(error)) {
+            return missingTableResponse();
+        }
+
+        return NextResponse.json(
+            { error: "Internal Server Error" },
+            { status: 500 },
+        );
+    }
+}
