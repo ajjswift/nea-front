@@ -160,6 +160,43 @@ function formatDuration(startedAt, endedAt) {
     return Math.max(0, endedAt - startedAt);
 }
 
+function toHttpBaseUrl(url) {
+    const trimmed = `${url || ""}`.trim();
+    if (!trimmed) {
+        return "";
+    }
+    if (trimmed.startsWith("wss://")) {
+        return `https://${trimmed.slice("wss://".length)}`;
+    }
+    if (trimmed.startsWith("ws://")) {
+        return `http://${trimmed.slice("ws://".length)}`;
+    }
+    return trimmed.replace(/\/+$/, "");
+}
+
+function buildDisplayUrl(wsUri, viewPath, browserToken) {
+    const baseUrl = toHttpBaseUrl(wsUri);
+    if (!baseUrl || !viewPath || !browserToken) {
+        return null;
+    }
+    return `${baseUrl}${viewPath}?token=${encodeURIComponent(browserToken)}`;
+}
+
+function createEmptyDisplayState(overrides = {}) {
+    return {
+        enabled: false,
+        status: "idle",
+        url: null,
+        viewPath: null,
+        novncAssetPath: null,
+        websockifyPath: null,
+        browserToken: null,
+        browserTokenExpiresAt: null,
+        reason: null,
+        ...overrides,
+    };
+}
+
 export function EnvironmentManager() {
     const params = useParams();
     const environmentId = Array.isArray(params.environmentId)
@@ -276,6 +313,7 @@ export function EnvironmentManager() {
                             ? parsedData.data.onlineUsers
                             : prev.onlineUsers || [],
                         remoteCursors: [],
+                        display: createEmptyDisplayState(),
                         sync: {
                             pendingCount: 0,
                             lastSavedAt: prev?.sync?.lastSavedAt || null,
@@ -317,6 +355,9 @@ export function EnvironmentManager() {
                             ...prev,
                             console: nextConsole,
                             isRunning: false,
+                            display: createEmptyDisplayState({
+                                status: "closed",
+                            }),
                             runFeedback: {
                                 status: exitCode === 0 ? "completed" : "error",
                                 startedAt,
@@ -347,6 +388,10 @@ export function EnvironmentManager() {
                             ...prev,
                             console: nextConsole,
                             isRunning: false,
+                            display: createEmptyDisplayState({
+                                status: "error",
+                                reason: parsedData.data,
+                            }),
                             runFeedback: {
                                 status: "error",
                                 startedAt,
@@ -372,6 +417,10 @@ export function EnvironmentManager() {
                                 (prev.console || "") +
                                 `\n[Session stopped: ${parsedData.data.reason}]\n`,
                             isRunning: false,
+                            display: createEmptyDisplayState({
+                                status: "stopped",
+                                reason: parsedData?.data?.reason || null,
+                            }),
                             lastStopped: parsedData.data.time,
                             runFeedback: {
                                 status: "stopped",
@@ -383,6 +432,41 @@ export function EnvironmentManager() {
                             },
                         };
                     });
+                    break;
+
+                case "displayState":
+                    setEnvironment((prev) => ({
+                        ...prev,
+                        display:
+                            parsedData?.data?.enabled &&
+                            parsedData?.data?.viewPath &&
+                            parsedData?.data?.browserToken
+                                ? {
+                                      enabled: true,
+                                      status: parsedData?.data?.status || "ready",
+                                      url: buildDisplayUrl(
+                                          wsUri,
+                                          parsedData.data.viewPath,
+                                          parsedData.data.browserToken,
+                                      ),
+                                      viewPath: parsedData.data.viewPath,
+                                      novncAssetPath:
+                                          parsedData?.data?.novncAssetPath || null,
+                                      websockifyPath:
+                                          parsedData?.data?.websockifyPath || null,
+                                      browserToken:
+                                          parsedData?.data?.browserToken || null,
+                                      browserTokenExpiresAt:
+                                          parsedData?.data?.browserTokenExpiresAt ||
+                                          null,
+                                      reason: parsedData?.data?.reason || null,
+                                  }
+                                : createEmptyDisplayState({
+                                      status:
+                                          parsedData?.data?.status || "idle",
+                                      reason: parsedData?.data?.reason || null,
+                                  }),
+                    }));
                     break;
 
                 case "fileUpdate": {
@@ -447,6 +531,10 @@ export function EnvironmentManager() {
                             ...prev,
                             isRunning: true,
                             console: "",
+                            display: createEmptyDisplayState({
+                                enabled: false,
+                                status: "starting",
+                            }),
                             runFeedback: {
                                 status: "running",
                                 startedAt: parsedData.data.time,
@@ -581,6 +669,9 @@ export function EnvironmentManager() {
                     ws: null,
                     onlineUsers,
                     remoteCursors: [],
+                    display: createEmptyDisplayState({
+                        status: "offline",
+                    }),
                     sync: {
                         pendingCount: 0,
                         lastSavedAt: prev?.sync?.lastSavedAt || null,

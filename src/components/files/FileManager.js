@@ -1,10 +1,14 @@
 import { useEnvironment } from "@/layout/EnvironmentLayout";
 import { getFileIcon } from "./fileUtils";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faFileCirclePlus, faTrash } from "@fortawesome/free-solid-svg-icons";
-import { useEffect, useState } from "react";
+import {
+    faFileCirclePlus,
+    faTrash,
+    faUpload,
+} from "@fortawesome/free-solid-svg-icons";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import { isValidFileName } from "./fileUtils";
+import { getFileExtension, getFileName, isValidFileName } from "./fileUtils";
 import {
     Dialog,
     DialogContent,
@@ -40,9 +44,50 @@ function getDisplayFileName(fileName, hideMarkdownSuffix = false) {
     return (fileName || "").replace(/\.md$/i, "");
 }
 
+function buildUniqueFileName(fileName, usedNames) {
+    const normalizedFileName = (fileName || "").trim();
+    if (!normalizedFileName || !usedNames.has(normalizedFileName)) {
+        return normalizedFileName;
+    }
+
+    const extension = getFileExtension(normalizedFileName);
+    const baseName = getFileName(normalizedFileName) || "imported-file";
+    let index = 1;
+
+    while (true) {
+        const candidate = extension
+            ? `${baseName} (${index}).${extension}`
+            : `${baseName} (${index})`;
+        if (!usedNames.has(candidate)) {
+            return candidate;
+        }
+        index += 1;
+    }
+}
+
+function normalizeImportedFileName(fileName, usedNames) {
+    const trimmed = (fileName || "").trim();
+    let candidate = trimmed;
+
+    if (!candidate) {
+        candidate = "imported-file.txt";
+    } else if (!isValidFileName(candidate)) {
+        candidate = candidate.startsWith(".")
+            ? `imported${candidate}`
+            : `imported-${candidate.replace(/\s+/g, "-")}`;
+    }
+
+    if (!isValidFileName(candidate)) {
+        candidate = "imported-file.txt";
+    }
+
+    return buildUniqueFileName(candidate, usedNames);
+}
+
 export function FileManager() {
     const { environment, setEnvironment } = useEnvironment();
     const [newFileOpen, setNewFileOpen] = useState(false);
+    const importInputRef = useRef(null);
     const isReadOnlyInstructions = Boolean(
         environment?.permissions?.readOnlyInstructions,
     );
@@ -200,6 +245,79 @@ export function FileManager() {
         });
     };
 
+    const importFiles = async (inputFiles) => {
+        if (isEnvironmentReadOnly || !inputFiles?.length) {
+            return;
+        }
+
+        const importedFiles = [];
+        const usedNames = new Set(
+            (Array.isArray(environment?.files) ? environment.files : [])
+                .map((file) => file?.name)
+                .filter(Boolean),
+        );
+
+        for (const inputFile of Array.from(inputFiles)) {
+            const normalizedName = normalizeImportedFileName(
+                inputFile?.name,
+                usedNames,
+            );
+            const content = await inputFile.text();
+
+            usedNames.add(normalizedName);
+            importedFiles.push({
+                id: crypto.randomUUID(),
+                name: normalizedName,
+                content,
+            });
+        }
+
+        if (!importedFiles.length) {
+            return;
+        }
+
+        setEnvironment((prev) => {
+            const previousFiles = Array.isArray(prev.files) ? prev.files : [];
+            const updatedFiles = [...previousFiles, ...importedFiles];
+            const didSend = prev.ws?.readyState === 1;
+
+            if (didSend) {
+                prev.ws.send(
+                    JSON.stringify({
+                        type: "fileUpdate",
+                        data: {
+                            fileId: importedFiles[importedFiles.length - 1].id,
+                            changes: [],
+                            files: updatedFiles,
+                            userId: prev.userId,
+                        },
+                    }),
+                );
+            }
+
+            const pendingCount = didSend
+                ? (Number.isFinite(prev?.sync?.pendingCount)
+                      ? prev.sync.pendingCount
+                      : 0) + 1
+                : Number.isFinite(prev?.sync?.pendingCount)
+                  ? prev.sync.pendingCount
+                  : 0;
+
+            return {
+                ...prev,
+                files: updatedFiles,
+                currentFile: importedFiles[importedFiles.length - 1].id,
+                sync: {
+                    pendingCount,
+                    lastSavedAt: prev?.sync?.lastSavedAt || null,
+                    status: didSend
+                        ? "saving"
+                        : prev?.sync?.status || "offline",
+                },
+            };
+        });
+    };
+
     const currentFile = environment.currentFile;
     const files = Array.isArray(environment?.files) ? environment.files : [];
     const pinnedInstructionsFile = isAssignmentEnvironment
@@ -271,6 +389,29 @@ export function FileManager() {
                 disabled={isEnvironmentReadOnly}
             />
 
+            <button
+                type="button"
+                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm text-zinc-500 outline-none transition-colors hover:bg-zinc-800/50 hover:text-zinc-300 disabled:cursor-not-allowed disabled:opacity-40"
+                onClick={() => importInputRef.current?.click()}
+                disabled={isEnvironmentReadOnly}
+            >
+                <FontAwesomeIcon icon={faUpload} className="w-3.5 shrink-0" />
+                <span>Import files</span>
+            </button>
+            <input
+                ref={importInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={async (event) => {
+                    try {
+                        await importFiles(event.target.files);
+                    } finally {
+                        event.target.value = "";
+                    }
+                }}
+            />
+
             {listedFiles.map((file) => (
                 <ContextMenu key={file.id}>
                     <ContextMenuTrigger>
@@ -309,8 +450,6 @@ export function FileManager() {
                             </ContextMenuItem>
                         ) : (
                             <>
-                                {/* Note: We removed the wrapping ContextMenuItem here.
-                                The DeleteContextWindow now renders it. */}
                                 <RenameContextWindow
                                     renameFile={renameFile}
                                     file={file}
@@ -412,7 +551,6 @@ function DeleteContextWindow({ file, deleteFile }) {
             <DialogTrigger asChild>
                 <ContextMenuItem
                     className="flex gap-2 cursor-pointer"
-                    // IMPORTANT: Prevent default closing behavior on select
                     onSelect={(e) => e.preventDefault()}
                 >
                     <FontAwesomeIcon icon={faTrash} /> Delete

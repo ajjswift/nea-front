@@ -5,10 +5,13 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { FileManager } from "@/components/files/FileManager";
 import { FileViewer } from "@/components/files/FileViewer";
 import { Console } from "@/components/files/Console";
+import { ProgramDisplayPanel } from "@/components/files/ProgramDisplayPanel";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     ArrowLeft,
+    ArrowUpRight,
     CirclePlay,
+    X,
     Copy,
     Focus,
     LoaderCircle,
@@ -123,6 +126,7 @@ export default function EnvironmentPage() {
         content: "",
     });
     const [isAccessibilityOpen, setIsAccessibilityOpen] = useState(false);
+    const [isDisplayDialogOpen, setIsDisplayDialogOpen] = useState(false);
     const [accessibility, setAccessibility] = useState(() => {
         if (typeof window === "undefined") {
             return DEFAULT_ACCESSIBILITY;
@@ -153,6 +157,7 @@ export default function EnvironmentPage() {
     });
     const hasSeededInstructionsRef = useRef(false);
     const stopButtonArmTimeoutRef = useRef(null);
+    const displayModalFrameRef = useRef(null);
     const isReady = environment?.ws?.readyState === 1;
     const isReadOnlyEnvironment = Boolean(
         environment?.permissions?.readOnlyEnvironment,
@@ -185,6 +190,12 @@ export default function EnvironmentPage() {
           environment.files[0] ||
           null
         : null;
+    const displayState =
+        environment?.display && typeof environment.display === "object"
+            ? environment.display
+            : null;
+    const displayUrl = displayState?.enabled ? displayState?.url || null : null;
+    const hasLiveDisplay = Boolean(displayUrl);
 
     const shortEnvironmentId = useMemo(() => {
         if (!environmentId) {
@@ -392,6 +403,17 @@ export default function EnvironmentPage() {
             ...prev,
             console: "",
             isRunning: true,
+            display: {
+                enabled: false,
+                status: "starting",
+                url: null,
+                viewPath: null,
+                novncAssetPath: null,
+                websockifyPath: null,
+                browserToken: null,
+                browserTokenExpiresAt: null,
+                reason: null,
+            },
             runFeedback: {
                 status: "starting",
                 startedAt: Date.now(),
@@ -425,6 +447,17 @@ export default function EnvironmentPage() {
 
         setEnvironment((prev) => ({
             ...prev,
+            display: {
+                enabled: false,
+                status: "stopping",
+                url: null,
+                viewPath: null,
+                novncAssetPath: null,
+                websockifyPath: null,
+                browserToken: null,
+                browserTokenExpiresAt: null,
+                reason: null,
+            },
             runFeedback: {
                 status: "stopping",
                 startedAt: prev?.runFeedback?.startedAt || Date.now(),
@@ -683,6 +716,56 @@ export default function EnvironmentPage() {
             setIsRunning(environment.isRunning);
         }
     }, [environment.isRunning]);
+
+    useEffect(() => {
+        if (!hasLiveDisplay) {
+            setIsDisplayDialogOpen(false);
+        }
+    }, [hasLiveDisplay]);
+
+    useEffect(() => {
+        if (!isDisplayDialogOpen) {
+            return undefined;
+        }
+
+        const previousOverflow = document.body.style.overflow;
+        document.body.style.overflow = "hidden";
+
+        const handleKeyDown = (event) => {
+            if (event.key === "Escape") {
+                setIsDisplayDialogOpen(false);
+            }
+        };
+
+        window.addEventListener("keydown", handleKeyDown);
+
+        return () => {
+            document.body.style.overflow = previousOverflow;
+            window.removeEventListener("keydown", handleKeyDown);
+        };
+    }, [isDisplayDialogOpen]);
+
+    useEffect(() => {
+        if (!isDisplayDialogOpen || !displayUrl) {
+            return undefined;
+        }
+
+        const focusDisplayFrame = () => {
+            const frame = displayModalFrameRef.current;
+            if (!frame) {
+                return;
+            }
+
+            frame.focus();
+
+            try {
+                frame.contentWindow?.focus();
+            } catch {}
+        };
+
+        const timeoutId = window.setTimeout(focusDisplayFrame, 80);
+        return () => window.clearTimeout(timeoutId);
+    }, [displayUrl, isDisplayDialogOpen]);
 
     useEffect(() => {
         if (stopButtonArmTimeoutRef.current) {
@@ -1069,6 +1152,19 @@ export default function EnvironmentPage() {
                                 >
                                     <SlidersHorizontal className="size-4" />
                                 </Button>
+                                {hasLiveDisplay ? (
+                                    <Button
+                                        onClick={() =>
+                                            setIsDisplayDialogOpen(true)
+                                        }
+                                        size="icon-sm"
+                                        variant="ghost"
+                                        className="text-zinc-500 hover:text-zinc-100"
+                                        title="Open live display"
+                                    >
+                                        <ArrowUpRight className="size-4" />
+                                    </Button>
+                                ) : null}
                             </div>
 
                             {(assignmentTestCases.length > 0 || canRequestHelp || isAssignmentEnvironment) && (
@@ -1518,22 +1614,52 @@ export default function EnvironmentPage() {
                                 <div className="grid h-full grid-cols-8 grid-rows-12">
                                     <FileViewer
                                         className={
-                                            showConsole
-                                                ? "col-span-8 row-span-7"
-                                                : "col-span-8 row-span-12"
+                                            hasLiveDisplay
+                                                ? showConsole
+                                                    ? "col-span-8 row-span-7"
+                                                    : "col-span-8 row-span-8"
+                                                : showConsole
+                                                  ? "col-span-8 row-span-7"
+                                                  : "col-span-8 row-span-12"
                                         }
                                         editorFontSize={fontSizePx}
                                         highContrast={accessibility.highContrast}
                                         reducedMotion={accessibility.reduceMotion}
                                     />
-                                    {showConsole && (
+                                    {hasLiveDisplay && showConsole ? (
+                                        <div className="col-span-8 row-span-5 grid min-h-0 grid-cols-[minmax(0,1.5fr)_minmax(320px,0.9fr)] overflow-hidden">
+                                            <ProgramDisplayPanel
+                                                className="min-h-0 border-t-0 border-r border-zinc-800"
+                                                displayUrl={displayUrl}
+                                                onPopOut={() =>
+                                                    setIsDisplayDialogOpen(true)
+                                                }
+                                            />
+                                            <Console
+                                                className="min-h-0 border-t-0 border-l border-zinc-800"
+                                                fontSize={fontSizePx}
+                                                highContrast={accessibility.highContrast}
+                                                reducedMotion={accessibility.reduceMotion}
+                                            />
+                                        </div>
+                                    ) : null}
+                                    {hasLiveDisplay && !showConsole ? (
+                                        <ProgramDisplayPanel
+                                            className="col-span-8 row-span-4 border-t-0"
+                                            displayUrl={displayUrl}
+                                            onPopOut={() =>
+                                                setIsDisplayDialogOpen(true)
+                                            }
+                                        />
+                                    ) : null}
+                                    {!hasLiveDisplay && showConsole ? (
                                         <Console
                                             className="col-span-8 row-span-5"
                                             fontSize={fontSizePx}
                                             highContrast={accessibility.highContrast}
                                             reducedMotion={accessibility.reduceMotion}
                                         />
-                                    )}
+                                    ) : null}
                                 </div>
                             </section>
                         </div>
@@ -1585,6 +1711,65 @@ export default function EnvironmentPage() {
                         </div>
                     </DialogContent>
                 </Dialog>
+
+                {isDisplayDialogOpen ? (
+                    <div
+                        className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-3 backdrop-blur-sm md:p-5"
+                        onClick={() => setIsDisplayDialogOpen(false)}
+                    >
+                        <div
+                            className="flex h-[94vh] w-[99vw] flex-col overflow-hidden rounded-3xl border border-zinc-800 bg-zinc-950 shadow-2xl shadow-black/50 md:w-[97vw]"
+                            onClick={(event) => event.stopPropagation()}
+                        >
+                            <div className="flex items-center justify-between border-b border-zinc-800 bg-zinc-900/95 px-5 py-4">
+                                <div className="min-w-0">
+                                    <p className="text-base font-semibold text-zinc-100">
+                                        Live display
+                                    </p>
+                                    <p className="text-sm text-zinc-500">
+                                        Interactive graphical output from the current
+                                        Python session.
+                                    </p>
+                                </div>
+                                <Button
+                                    type="button"
+                                    size="icon-sm"
+                                    variant="ghost"
+                                    className="shrink-0 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+                                    onClick={() => setIsDisplayDialogOpen(false)}
+                                >
+                                    <X className="size-4" />
+                                </Button>
+                            </div>
+
+                            <div className="min-h-0 flex-1 bg-[radial-gradient(circle_at_top,_rgba(63,63,70,0.18),_transparent_55%),linear-gradient(180deg,_#09090b_0%,_#050505_100%)] p-2 md:p-4">
+                                <div className="h-full w-full overflow-hidden rounded-2xl border border-zinc-800 bg-black shadow-inner shadow-black/60">
+                                    {displayUrl ? (
+                                        <iframe
+                                            ref={displayModalFrameRef}
+                                            title="Program display modal"
+                                            src={displayUrl}
+                                            className="h-full w-full bg-black"
+                                            onLoad={() => {
+                                                const frame =
+                                                    displayModalFrameRef.current;
+                                                if (!frame) {
+                                                    return;
+                                                }
+
+                                                frame.focus();
+
+                                                try {
+                                                    frame.contentWindow?.focus();
+                                                } catch {}
+                                            }}
+                                        />
+                                    ) : null}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                ) : null}
 
                 <Dialog
                     open={isResetConfirmOpen}

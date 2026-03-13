@@ -70,6 +70,10 @@ export function getFileExtension(fileName) {
     return defaultService.getFileExtension(fileName);
 }
 
+export function getFileName(fileName) {
+    return defaultService.getFileName(fileName);
+}
+
 export function getFileIcon(fileName) {
     return defaultService.getFileIcon(fileName);
 }
