@@ -36,6 +36,25 @@ function isBinaryFile(file) {
     );
 }
 
+function base64ToBlob(base64Value) {
+    const binary = atob(base64Value);
+    const chunkSize = 0x8000;
+    const arrays = [];
+
+    for (let index = 0; index < binary.length; index += chunkSize) {
+        const chunk = binary.slice(index, index + chunkSize);
+        const bytes = new Uint8Array(chunk.length);
+
+        for (let offset = 0; offset < chunk.length; offset += 1) {
+            bytes[offset] = chunk.charCodeAt(offset);
+        }
+
+        arrays.push(bytes);
+    }
+
+    return new Blob(arrays);
+}
+
 function normalizeRequiredFiles(value) {
     if (
         value &&
@@ -364,6 +383,11 @@ export function FileViewer({
     const currentFileContent = isCurrentFileBinary
         ? ""
         : currentFile?.content ?? "";
+    const currentFileRawBase64 =
+        currentFile?.rawData?.encoding === "base64" &&
+        typeof currentFile?.rawData?.value === "string"
+            ? currentFile.rawData.value
+            : "";
 
     const fileExtension = (getFileExtension(currentFile?.name) || "").toLowerCase();
     const isMarkdownFile = fileExtension === "md";
@@ -502,6 +526,22 @@ export function FileViewer({
                 },
             };
         });
+    };
+
+    const handleDownloadBinaryFile = () => {
+        if (!currentFile?.name || !currentFileRawBase64) {
+            return;
+        }
+
+        const blob = base64ToBlob(currentFileRawBase64);
+        const downloadUrl = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = downloadUrl;
+        anchor.download = currentFile.name;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(downloadUrl);
     };
 
     const handleFormatFile = async () => {
@@ -1282,6 +1322,14 @@ export function FileViewer({
                                 stay intact between runs. Editing binary files in the
                                 text editor is disabled.
                             </p>
+                            <button
+                                type="button"
+                                onClick={handleDownloadBinaryFile}
+                                disabled={!currentFileRawBase64}
+                                className="mt-4 rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                Download file
+                            </button>
                         </div>
                     </div>
                 ) : shouldShowRichMarkdown ? (
