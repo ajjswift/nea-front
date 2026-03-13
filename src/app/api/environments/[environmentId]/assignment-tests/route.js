@@ -63,12 +63,25 @@ function normalizeFiles(value) {
                 return null;
             }
 
+            const rawData =
+                file?.rawData &&
+                typeof file.rawData === "object" &&
+                file.rawData.encoding === "base64" &&
+                typeof file.rawData.value === "string"
+                    ? {
+                          encoding: "base64",
+                          value: file.rawData.value.slice(0, 400000),
+                      }
+                    : null;
+
             return {
                 name,
                 content:
-                    typeof file?.content === "string"
+                    !rawData && typeof file?.content === "string"
                         ? file.content.slice(0, 150000)
                         : `${file?.content ?? ""}`.slice(0, 150000),
+                rawData,
+                isBinary: Boolean(rawData),
             };
         })
         .filter(Boolean)

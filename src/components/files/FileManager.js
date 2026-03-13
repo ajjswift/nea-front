@@ -84,6 +84,59 @@ function normalizeImportedFileName(fileName, usedNames) {
     return buildUniqueFileName(candidate, usedNames);
 }
 
+function bytesToBase64(bytes) {
+    let binary = "";
+    const chunkSize = 0x8000;
+
+    for (let index = 0; index < bytes.length; index += chunkSize) {
+        const chunk = bytes.subarray(index, index + chunkSize);
+        binary += String.fromCharCode(...chunk);
+    }
+
+    return btoa(binary);
+}
+
+function decodeTextFile(bytes) {
+    if (!(bytes instanceof Uint8Array) || bytes.length === 0) {
+        return "";
+    }
+
+    if (bytes.includes(0)) {
+        return null;
+    }
+
+    try {
+        const decoder = new TextDecoder("utf-8", { fatal: true });
+        return decoder.decode(bytes);
+    } catch {
+        return null;
+    }
+}
+
+function buildImportedFilePayload(id, name, buffer) {
+    const bytes = new Uint8Array(buffer);
+    const content = decodeTextFile(bytes);
+
+    if (content !== null) {
+        return {
+            id,
+            name,
+            content,
+        };
+    }
+
+    return {
+        id,
+        name,
+        content: "",
+        rawData: {
+            encoding: "base64",
+            value: bytesToBase64(bytes),
+        },
+        isBinary: true,
+    };
+}
+
 export function FileManager() {
     const { environment, setEnvironment } = useEnvironment();
     const [newFileOpen, setNewFileOpen] = useState(false);
@@ -262,14 +315,16 @@ export function FileManager() {
                 inputFile?.name,
                 usedNames,
             );
-            const content = await inputFile.text();
+            const buffer = await inputFile.arrayBuffer();
 
             usedNames.add(normalizedName);
-            importedFiles.push({
-                id: crypto.randomUUID(),
-                name: normalizedName,
-                content,
-            });
+            importedFiles.push(
+                buildImportedFilePayload(
+                    crypto.randomUUID(),
+                    normalizedName,
+                    buffer,
+                ),
+            );
         }
 
         if (!importedFiles.length) {

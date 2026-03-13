@@ -26,6 +26,16 @@ function isVirtualInstructionsFile(file) {
     return Boolean(file?.isVirtualInstructions);
 }
 
+function isBinaryFile(file) {
+    return Boolean(
+        file?.isBinary ||
+            (file?.rawData &&
+                typeof file.rawData === "object" &&
+                file.rawData.encoding === "base64" &&
+                typeof file.rawData.value === "string")
+    );
+}
+
 function normalizeRequiredFiles(value) {
     if (
         value &&
@@ -350,7 +360,10 @@ export function FileViewer({
         (environment?.files?.length > 0 && environment.files[0]) ||
         null;
     const currentFileId = currentFile?.id ?? null;
-    const currentFileContent = currentFile?.content ?? "";
+    const isCurrentFileBinary = isBinaryFile(currentFile);
+    const currentFileContent = isCurrentFileBinary
+        ? ""
+        : currentFile?.content ?? "";
 
     const fileExtension = (getFileExtension(currentFile?.name) || "").toLowerCase();
     const isMarkdownFile = fileExtension === "md";
@@ -391,9 +404,12 @@ export function FileViewer({
         Boolean(isInstructionsReadOnly || isEnvironmentReadOnly);
 
     const shouldShowRawEditor =
-        !isMarkdownFile || (!isCurrentFileReadOnly && markdownMode === "raw");
+        !isCurrentFileBinary &&
+        (!isMarkdownFile || (!isCurrentFileReadOnly && markdownMode === "raw"));
     const shouldShowRichMarkdown =
-        isMarkdownFile && (isCurrentFileReadOnly || markdownMode === "rich");
+        !isCurrentFileBinary &&
+        isMarkdownFile &&
+        (isCurrentFileReadOnly || markdownMode === "rich");
 
     useEffect(() => {
         currentFileIdRef.current = environment?.currentFile;
@@ -442,7 +458,12 @@ export function FileViewer({
             const previousFiles = Array.isArray(prev.files) ? prev.files : [];
             const updatedFiles = previousFiles.map((file) =>
                 file.id === fileId
-                    ? { ...file, content: nextContent }
+                    ? {
+                          ...file,
+                          content: nextContent,
+                          rawData: null,
+                          isBinary: false,
+                      }
                     : file,
             );
 
@@ -485,6 +506,17 @@ export function FileViewer({
 
     const handleFormatFile = async () => {
         if (isCurrentFileReadOnly || !currentFile) {
+            return;
+        }
+
+        if (isCurrentFileBinary) {
+            setLintHints([
+                {
+                    line: null,
+                    level: "info",
+                    message: "Binary files cannot be formatted in the editor.",
+                },
+            ]);
             return;
         }
 
@@ -565,6 +597,17 @@ export function FileViewer({
 
     const handleRunLint = async () => {
         if (!currentFile) {
+            return;
+        }
+
+        if (isCurrentFileBinary) {
+            setLintHints([
+                {
+                    line: null,
+                    level: "info",
+                    message: "Binary files cannot be linted in the editor.",
+                },
+            ]);
             return;
         }
 
@@ -677,7 +720,12 @@ export function FileViewer({
                 const previousFiles = Array.isArray(prev.files) ? prev.files : [];
                 const updatedFiles = previousFiles.map((file) =>
                     file.id === fileId
-                        ? { ...file, content: updatedContent }
+                        ? {
+                              ...file,
+                              content: updatedContent,
+                              rawData: null,
+                              isBinary: false,
+                          }
                         : file,
                 );
 
@@ -1067,6 +1115,7 @@ export function FileViewer({
                         onClick={handleFormatFile}
                         disabled={
                             isCurrentFileReadOnly ||
+                            isCurrentFileBinary ||
                             !currentFile ||
                             isFormatting ||
                             isLinting
@@ -1080,6 +1129,7 @@ export function FileViewer({
                         onClick={handleRunLint}
                         disabled={
                             isCurrentFileReadOnly ||
+                            isCurrentFileBinary ||
                             !currentFile ||
                             isFormatting ||
                             isLinting
@@ -1221,7 +1271,20 @@ export function FileViewer({
             ) : null}
 
             <div className="flex-1 overflow-hidden">
-                {shouldShowRichMarkdown ? (
+                {isCurrentFileBinary ? (
+                    <div className="flex h-full items-center justify-center bg-zinc-950 p-6">
+                        <div className="max-w-md rounded-lg border border-zinc-800 bg-zinc-900/70 p-4 text-sm text-zinc-300">
+                            <p className="font-medium text-zinc-100">
+                                Binary file
+                            </p>
+                            <p className="mt-2 text-zinc-400">
+                                This file is stored as raw base64 data so its bytes
+                                stay intact between runs. Editing binary files in the
+                                text editor is disabled.
+                            </p>
+                        </div>
+                    </div>
+                ) : shouldShowRichMarkdown ? (
                     <div className="h-full overflow-auto bg-zinc-950 p-4 text-sm leading-7 text-zinc-200">
                         {currentFileContent.trim() ? (
                             <div
