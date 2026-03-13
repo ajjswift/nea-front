@@ -490,6 +490,114 @@ export class ClassroomService {
         return normalized;
     }
 
+    async getCachedTemplateEnvironment(
+        templateEnvironmentId,
+        teacherId,
+        client,
+        templateEnvironmentCache = null,
+    ) {
+        if (!templateEnvironmentId) {
+            return null;
+        }
+
+        const cacheKey = `${teacherId}:${templateEnvironmentId}`;
+        if (templateEnvironmentCache?.has(cacheKey)) {
+            return templateEnvironmentCache.get(cacheKey);
+        }
+
+        const templateEnvironment =
+            await this.classroomRepository.findTemplateEnvironmentForTeacher(
+                templateEnvironmentId,
+                teacherId,
+                client,
+            );
+
+        if (templateEnvironmentCache) {
+            templateEnvironmentCache.set(cacheKey, templateEnvironment || null);
+        }
+
+        return templateEnvironment || null;
+    }
+
+    async provisionAssignmentEnvironmentForStudent(
+        {
+            assignmentId,
+            assignmentTitle,
+            assignmentDescription = null,
+            studentId,
+            studentUsername,
+            teacherId,
+            templateEnvironment = null,
+            templateEnvironmentId = null,
+        },
+        client,
+        templateEnvironmentCache = null,
+    ) {
+        const resolvedTemplateEnvironment =
+            templateEnvironment ||
+            (await this.getCachedTemplateEnvironment(
+                templateEnvironmentId,
+                teacherId,
+                client,
+                templateEnvironmentCache,
+            ));
+        const environmentId = randomUUID();
+        const environmentName = `${assignmentTitle} - ${studentUsername || "Student"}`.slice(
+            0,
+            80,
+        );
+        const environmentDescription = (
+            assignmentDescription || resolvedTemplateEnvironment?.description
+        )
+            ? (
+                  assignmentDescription || resolvedTemplateEnvironment?.description
+              ).slice(0, 500)
+            : null;
+        const runtime = resolvedTemplateEnvironment?.runtime || "python-3.11";
+
+        await client.query(
+            `
+                INSERT INTO environments (
+                    id,
+                    user_id,
+                    name,
+                    description,
+                    runtime,
+                    status,
+                    created_at,
+                    updated_at
+                )
+                VALUES ($1, $2, $3, $4, $5, 'active', NOW(), NOW())
+            `,
+            [
+                environmentId,
+                studentId,
+                environmentName,
+                environmentDescription,
+                runtime,
+            ],
+        );
+
+        if (resolvedTemplateEnvironment?.id) {
+            await this.cloneTemplateFiles(
+                resolvedTemplateEnvironment.id,
+                environmentId,
+            );
+        }
+
+        await this.classroomRepository.linkAssignmentEnvironment(
+            {
+                id: randomUUID(),
+                assignmentId,
+                studentId,
+                environmentId,
+            },
+            client,
+        );
+
+        return environmentId;
+    }
+
     mapAssignments(rows) {
         const grouped = new Map();
 
@@ -615,6 +723,32 @@ export class ClassroomService {
                 throw new ClassroomNotFoundError("Class not found.");
             }
 
+            const templateEnvironmentCache = new Map();
+            for (const student of users) {
+                const assignmentsToProvision =
+                    await this.classroomRepository.listOpenAssignmentsWithoutEnvironmentForStudent(
+                        classId,
+                        student.id,
+                        client,
+                    );
+
+                for (const assignment of assignmentsToProvision) {
+                    await this.provisionAssignmentEnvironmentForStudent(
+                        {
+                            assignmentId: assignment.id,
+                            assignmentTitle: assignment.title,
+                            assignmentDescription: assignment.description,
+                            studentId: student.id,
+                            studentUsername: student.username,
+                            teacherId: user.userId,
+                            templateEnvironmentId: assignment.template_environment_id,
+                        },
+                        client,
+                        templateEnvironmentCache,
+                    );
+                }
+            }
+
             return this.classroomRepository.listClassStudents(
                 classId,
                 user.userId,
@@ -634,22 +768,55 @@ export class ClassroomService {
         this.ensureStudent(user);
 
         const joinCode = this.normalizeJoinCode(payload.joinCode);
-        const classRow = await this.classroomRepository.getClassByJoinCode(joinCode);
 
-        if (!classRow) {
-            throw new ClassroomNotFoundError("Invalid class join code.");
-        }
+        return this.runInTransaction(async (client) => {
+            const classRow = await this.classroomRepository.getClassByJoinCode(
+                joinCode,
+                client,
+            );
 
-        await this.classroomRepository.addClassEnrollment({
-            classId: classRow.id,
-            studentId: user.userId,
+            if (!classRow) {
+                throw new ClassroomNotFoundError("Invalid class join code.");
+            }
+
+            await this.classroomRepository.addClassEnrollment(
+                {
+                    classId: classRow.id,
+                    studentId: user.userId,
+                },
+                client,
+            );
+
+            const assignmentsToProvision =
+                await this.classroomRepository.listOpenAssignmentsWithoutEnvironmentForStudent(
+                    classRow.id,
+                    user.userId,
+                    client,
+                );
+            const templateEnvironmentCache = new Map();
+
+            for (const assignment of assignmentsToProvision) {
+                await this.provisionAssignmentEnvironmentForStudent(
+                    {
+                        assignmentId: assignment.id,
+                        assignmentTitle: assignment.title,
+                        assignmentDescription: assignment.description,
+                        studentId: user.userId,
+                        studentUsername: user.username,
+                        teacherId: classRow.teacher_id,
+                        templateEnvironmentId: assignment.template_environment_id,
+                    },
+                    client,
+                    templateEnvironmentCache,
+                );
+            }
+
+            return {
+                id: classRow.id,
+                name: classRow.name,
+                joinCode: classRow.join_code,
+            };
         });
-
-        return {
-            id: classRow.id,
-            name: classRow.name,
-            joinCode: classRow.join_code,
-        };
     }
 
     async createAssignmentForClass(user, classId, payload = {}) {
@@ -719,54 +886,15 @@ export class ClassroomService {
             );
 
             for (const student of students) {
-                const environmentId = randomUUID();
-                const environmentName = `${title} - ${student.username}`.slice(
-                    0,
-                    80,
-                );
-                const environmentDescription = (
-                    description || templateEnvironment?.description
-                )
-                    ? (description || templateEnvironment?.description).slice(0, 500)
-                    : null;
-                const runtime = templateEnvironment?.runtime || "python-3.11";
-
-                await client.query(
-                    `
-                        INSERT INTO environments (
-                            id,
-                            user_id,
-                            name,
-                            description,
-                            runtime,
-                            status,
-                            created_at,
-                            updated_at
-                        )
-                        VALUES ($1, $2, $3, $4, $5, 'active', NOW(), NOW())
-                    `,
-                    [
-                        environmentId,
-                        student.id,
-                        environmentName,
-                        environmentDescription,
-                        runtime,
-                    ],
-                );
-
-                if (templateEnvironment?.id) {
-                    await this.cloneTemplateFiles(
-                        templateEnvironment.id,
-                        environmentId,
-                    );
-                }
-
-                await this.classroomRepository.linkAssignmentEnvironment(
+                await this.provisionAssignmentEnvironmentForStudent(
                     {
-                        id: randomUUID(),
                         assignmentId: assignment.id,
                         studentId: student.id,
-                        environmentId,
+                        studentUsername: student.username,
+                        teacherId: user.userId,
+                        assignmentTitle: title,
+                        assignmentDescription: description,
+                        templateEnvironment,
                     },
                     client,
                 );

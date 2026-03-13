@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { LoaderCircle, SquareTerminal } from "lucide-react";
+import { LoaderCircle } from "lucide-react";
 
 export default function Signup() {
     const router = useRouter();
@@ -47,9 +47,6 @@ export default function Signup() {
         <div className="flex min-h-screen items-center justify-center bg-zinc-950 px-4 text-zinc-100">
             <div className="w-full max-w-sm">
                 <div className="mb-6 text-center">
-                    <div className="mx-auto mb-3 flex size-10 items-center justify-center rounded-xl bg-emerald-500/10 ring-1 ring-emerald-500/20">
-                        <SquareTerminal className="size-5 text-emerald-400" />
-                    </div>
                     <p className="text-sm text-zinc-500">Create your account</p>
                 </div>
 

@@ -1,15 +1,10 @@
-export class ApiError extends Error {
-    constructor(message, status, payload = null) {
-        super(message);
-        this.name = "ApiError";
-        this.status = status;
-        this.payload = payload;
-    }
-}
+import { BaseApiClient, BaseApiError } from "@/lib/api/BaseApiClient";
 
-export class EnvironmentApiClient {
+export class ApiError extends BaseApiError {}
+
+export class EnvironmentApiClient extends BaseApiClient {
     constructor(basePath = "/api/environments") {
-        this.basePath = basePath;
+        super(basePath, ApiError);
     }
 
     async listEnvironments() {
@@ -17,83 +12,52 @@ export class EnvironmentApiClient {
     }
 
     async createEnvironment(payload) {
-        return this.sendRequest("POST", payload);
+        return this.sendRequest("POST", "", payload);
     }
 
     async getEnvironmentById(environmentId) {
-        return this.sendRequest("GET", null, `/${environmentId}`);
+        return this.sendRequest("GET", `/${environmentId}`);
     }
 
     async resetEnvironmentToTemplate(environmentId) {
-        return this.sendRequest("POST", null, `/${environmentId}/reset-template`);
+        return this.sendRequest("POST", `/${environmentId}/reset-template`);
     }
 
     async formatPythonFile(environmentId, payload) {
         return this.sendRequest(
             "POST",
+            `/${environmentId}/python-tools`,
             {
                 action: "format",
                 ...payload,
             },
-            `/${environmentId}/python-tools`,
         );
     }
 
     async lintPythonFile(environmentId, payload) {
         return this.sendRequest(
             "POST",
+            `/${environmentId}/python-tools`,
             {
                 action: "lint",
                 ...payload,
             },
-            `/${environmentId}/python-tools`,
         );
     }
 
     async runAssignmentTests(environmentId, payload) {
-        return this.sendRequest(
-            "POST",
-            payload,
-            `/${environmentId}/assignment-tests`,
-        );
+        return this.sendRequest("POST", `/${environmentId}/assignment-tests`, payload);
     }
 
     async updateAssignmentSubmission(environmentId, payload) {
-        return this.sendRequest(
-            "PATCH",
-            payload,
-            `/${environmentId}/submission`,
-        );
+        return this.sendRequest("PATCH", `/${environmentId}/submission`, payload);
     }
 
     async createTeacherFeedbackComment(environmentId, payload) {
         return this.sendRequest(
             "POST",
-            payload,
             `/${environmentId}/feedback-comments`,
+            payload,
         );
-    }
-
-    async sendRequest(method, body = null, path = "") {
-        const response = await fetch(`${this.basePath}${path}`, {
-            method,
-            headers: { "Content-Type": "application/json" },
-            cache: "no-store",
-            body: body ? JSON.stringify(body) : undefined,
-        });
-
-        let payload = null;
-        try {
-            payload = await response.json();
-        } catch {
-            payload = null;
-        }
-
-        if (!response.ok) {
-            const message = payload?.error || "Request failed.";
-            throw new ApiError(message, response.status, payload);
-        }
-
-        return payload;
     }
 }

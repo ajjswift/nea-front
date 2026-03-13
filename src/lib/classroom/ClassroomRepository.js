@@ -616,6 +616,34 @@ export class ClassroomRepository {
                 LEFT JOIN users AS u
                     ON u.id = ae.student_id
                 WHERE a.class_id = $1
+                    AND ae.id IS NOT NULL
+                ORDER BY a.created_at DESC
+            `,
+            [classId, studentId],
+        );
+
+        return result.rows;
+    }
+
+    async listOpenAssignmentsWithoutEnvironmentForStudent(
+        classId,
+        studentId,
+        executor = this.database,
+    ) {
+        const result = await executor.query(
+            `
+                SELECT
+                    a.id,
+                    a.title,
+                    a.description,
+                    a.template_environment_id
+                FROM assignments AS a
+                LEFT JOIN assignment_environments AS ae
+                    ON ae.assignment_id = a.id
+                    AND ae.student_id = $2
+                WHERE a.class_id = $1
+                    AND ae.id IS NULL
+                    AND (a.due_at IS NULL OR a.due_at >= NOW())
                 ORDER BY a.created_at DESC
             `,
             [classId, studentId],

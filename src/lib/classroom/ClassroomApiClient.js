@@ -1,107 +1,60 @@
-export class ClassroomApiError extends Error {
-    constructor(message, status, payload = null) {
-        super(message);
-        this.name = "ClassroomApiError";
-        this.status = status;
-        this.payload = payload;
-    }
-}
+import { BaseApiClient, BaseApiError } from "@/lib/api/BaseApiClient";
 
-export class ClassroomApiClient {
+export class ClassroomApiError extends BaseApiError {}
+
+export class ClassroomApiClient extends BaseApiClient {
     constructor(basePath = "/api/classroom") {
-        this.basePath = basePath;
+        super(basePath, ClassroomApiError);
     }
 
     async getDashboard() {
-        return this.sendRequest("GET", `${this.basePath}/dashboard`);
+        return this.sendRequest("GET", "/dashboard");
     }
 
     async createClass(payload) {
-        return this.sendRequest("POST", `${this.basePath}/classes`, payload);
+        return this.sendRequest("POST", "/classes", payload);
     }
 
     async joinClassByCode(joinCode) {
-        return this.sendRequest("POST", `${this.basePath}/join`, {
+        return this.sendRequest("POST", "/join", {
             joinCode,
         });
     }
 
     async setClassStudents(classId, usernames) {
-        return this.sendRequest(
-            "PUT",
-            `${this.basePath}/classes/${classId}/students`,
-            { usernames },
-        );
+        return this.sendRequest("PUT", `/classes/${classId}/students`, {
+            usernames,
+        });
     }
 
     async createAssignment(classId, payload) {
-        return this.sendRequest(
-            "POST",
-            `${this.basePath}/classes/${classId}/assignments`,
-            payload,
-        );
+        return this.sendRequest("POST", `/classes/${classId}/assignments`, payload);
     }
 
     async updateAssignment(assignmentId, payload) {
-        return this.sendRequest(
-            "PATCH",
-            `${this.basePath}/assignments/${assignmentId}`,
-            payload,
-        );
+        return this.sendRequest("PATCH", `/assignments/${assignmentId}`, payload);
     }
 
     async deleteAssignment(assignmentId) {
-        return this.sendRequest(
-            "DELETE",
-            `${this.basePath}/assignments/${assignmentId}`,
-        );
+        return this.sendRequest("DELETE", `/assignments/${assignmentId}`);
     }
 
     async deleteClass(classId) {
-        return this.sendRequest("DELETE", `${this.basePath}/classes/${classId}`);
+        return this.sendRequest("DELETE", `/classes/${classId}`);
     }
 
     async getHelpQueue(classId = null) {
         const query = classId
             ? `?classId=${encodeURIComponent(classId)}`
             : "";
-        return this.sendRequest("GET", `${this.basePath}/help${query}`);
+        return this.sendRequest("GET", `/help${query}`);
     }
 
     async requestHelp(payload) {
-        return this.sendRequest("POST", `${this.basePath}/help`, payload);
+        return this.sendRequest("POST", "/help", payload);
     }
 
     async resolveHelpRequest(helpRequestId) {
-        return this.sendRequest(
-            "PATCH",
-            `${this.basePath}/help/${helpRequestId}`,
-        );
-    }
-
-    async sendRequest(method, url, body = null) {
-        const response = await fetch(url, {
-            method,
-            headers: { "Content-Type": "application/json" },
-            cache: "no-store",
-            body: body ? JSON.stringify(body) : undefined,
-        });
-
-        let payload = null;
-        try {
-            payload = await response.json();
-        } catch {
-            payload = null;
-        }
-
-        if (!response.ok) {
-            throw new ClassroomApiError(
-                payload?.error || "Request failed.",
-                response.status,
-                payload,
-            );
-        }
-
-        return payload;
+        return this.sendRequest("PATCH", `/help/${helpRequestId}`);
     }
 }
