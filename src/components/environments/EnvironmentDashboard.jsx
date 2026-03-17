@@ -48,6 +48,7 @@ import {
 } from "@/lib/classroom/ClassroomApiClient";
 import { EnvironmentViewModel } from "@/lib/environments/EnvironmentViewModel";
 import { StudentAssignmentViewModel } from "@/lib/classroom/StudentAssignmentViewModel";
+import LogoutButton from "@/components/auth/LogoutButton";
 
 const environmentApiClient = new EnvironmentApiClient();
 const classroomApiClient = new ClassroomApiClient();
@@ -469,6 +470,10 @@ export default function EnvironmentDashboard() {
                                 >
                                     <Link href="/classroom">Classroom</Link>
                                 </Button>
+                                <LogoutButton
+                                    className="h-8"
+                                    onError={setErrorMessage}
+                                />
                             </div>
                         )}
                     </div>

@@ -9,6 +9,7 @@ import {
     ClassroomApiClient,
     ClassroomApiError,
 } from "@/lib/classroom/ClassroomApiClient";
+import LogoutButton from "@/components/auth/LogoutButton";
 
 const classroomApiClient = new ClassroomApiClient();
 
@@ -202,9 +203,15 @@ export default function StudentClassroomDashboard({ initialDashboard = null }) {
                             </p>
                         </div>
                         {dashboard.user ? (
-                            <div className="text-right">
-                                <p className="text-sm font-medium text-zinc-200">{dashboard.user.username}</p>
-                                <p className="text-xs text-zinc-500">student</p>
+                            <div className="flex items-center gap-3">
+                                <div className="text-right">
+                                    <p className="text-sm font-medium text-zinc-200">{dashboard.user.username}</p>
+                                    <p className="text-xs text-zinc-500">student</p>
+                                </div>
+                                <LogoutButton
+                                    className="h-8"
+                                    onError={setErrorMessage}
+                                />
                             </div>
                         ) : null}
                     </div>
