@@ -4,6 +4,9 @@ import db from "@/utils/pg";
 
 export async function POST(request) {
     try {
+        // This block safely awaits and parses the JSON body, storing it in the body variable.
+        // This is necessary, as if there is malformed javascript, it could crash the application.
+        // Using error handling here allows me to safely check whether the request body contains valid JSON data, sending an appropriate 400 response if not.
         let body = {};
         try {
             body = await request.json();
@@ -15,9 +18,12 @@ export async function POST(request) {
         }
 
         const username =
-            typeof body?.username === "string" ? body.username.trim() : "";
-        const password = typeof body?.password === "string" ? body.password : "";
+            typeof body?.username === "string" ? body.username.trim() : ""; // Checks whether the username is a string, in which case removes any trailing spaces in the string. If not, sets username to an empty string.
+        const password =
+            typeof body?.password === "string" ? body.password : ""; // Checks whether the password is a string, in which case sets the password variable to the password, else an empty string.
 
+        // If either the username or password are falsy, return a 400 for missing fields.
+        //  Falsy values include empty strings, so if they're not the correct data type, an appropriate error message is sent.
         if (!username || !password) {
             return NextResponse.json(
                 { error: "Missing fields" },
@@ -26,6 +32,7 @@ export async function POST(request) {
         }
 
         if (username.length > 64 || password.length > 256) {
+            // If the username or password are too long, return a 400.
             return NextResponse.json(
                 { error: "Invalid credentials format" },
                 { status: 400 },

@@ -36,6 +36,7 @@ import {
     EnvironmentApiClient,
 } from "@/lib/environments/EnvironmentApiClient";
 import { ClassroomApiClient } from "@/lib/classroom/ClassroomApiClient";
+import { replaceFilesInDoc } from "@/lib/collaboration/yjsEnvironment";
 
 const environmentApiClient = new EnvironmentApiClient();
 const classroomApiClient = new ClassroomApiClient();
@@ -681,18 +682,8 @@ export default function EnvironmentPage() {
                     prev.currentFile ||
                     null;
 
-                if (prev.ws?.readyState === 1) {
-                    prev.ws.send(
-                        JSON.stringify({
-                            type: "fileUpdate",
-                            data: {
-                                fileId: nextCurrentFile,
-                                changes: [],
-                                files,
-                                userId: prev.userId,
-                            },
-                        }),
-                    );
+                if (prev.ydoc) {
+                    replaceFilesInDoc(prev.ydoc, files);
                 }
 
                 return {
@@ -837,6 +828,7 @@ export default function EnvironmentPage() {
                         ),
                     },
                     access: payload?.access || null,
+                    collaboration: payload?.collaboration || null,
                 }));
             } catch (error) {
                 if (cancelled) {
@@ -930,18 +922,8 @@ export default function EnvironmentPage() {
             },
         ];
 
-        if (environment?.ws?.readyState === 1) {
-            environment.ws.send(
-                JSON.stringify({
-                    type: "fileUpdate",
-                    data: {
-                        fileId: instructionsFileId,
-                        changes: [],
-                        files: seededFiles,
-                        userId: environment.userId,
-                    },
-                }),
-            );
+        if (environment?.ydoc) {
+            replaceFilesInDoc(environment.ydoc, seededFiles);
         }
 
         setEnvironment((prev) => ({

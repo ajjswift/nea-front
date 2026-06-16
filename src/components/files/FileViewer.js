@@ -4,6 +4,7 @@ import { getFileExtension, getProgrammingLanguage } from "./fileUtils";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { EnvironmentApiClient } from "@/lib/environments/EnvironmentApiClient";
+import { replaceFilesInDoc } from "@/lib/collaboration/yjsEnvironment";
 
 const stringToColor = (str) => {
     if (!str) {
@@ -473,6 +474,25 @@ export function FileViewer({
         }
     }, [currentFileId, currentFileContent, editorInstance]);
 
+    useEffect(() => {
+        if (!editorInstance || !shouldShowRawEditor || !currentFileId) {
+            return;
+        }
+        if (currentFileId !== previousFileIdRef.current) {
+            return;
+        }
+        if (editorInstance.getValue() === currentFileContent) {
+            return;
+        }
+
+        isApplyingRemoteChangeRef.current = true;
+        try {
+            editorInstance.setValue(currentFileContent);
+        } finally {
+            isApplyingRemoteChangeRef.current = false;
+        }
+    }, [currentFileContent, currentFileId, editorInstance, shouldShowRawEditor]);
+
     const applyFileContentUpdate = (fileId, nextContent) => {
         if (!fileId || currentFileReadOnlyRef.current) {
             return;
@@ -491,38 +511,17 @@ export function FileViewer({
                     : file,
             );
 
-            const didSend = prev.ws?.readyState === 1;
-            if (didSend) {
-                prev.ws.send(
-                    JSON.stringify({
-                        type: "fileUpdate",
-                        data: {
-                            fileId,
-                            changes: [],
-                            files: updatedFiles,
-                            userId: prev.userId,
-                        },
-                    }),
-                );
+            if (prev.ydoc) {
+                replaceFilesInDoc(prev.ydoc, updatedFiles);
             }
-
-            const pendingCount = didSend
-                ? (Number.isFinite(prev?.sync?.pendingCount)
-                      ? prev.sync.pendingCount
-                      : 0) + 1
-                : Number.isFinite(prev?.sync?.pendingCount)
-                  ? prev.sync.pendingCount
-                  : 0;
 
             return {
                 ...prev,
                 files: updatedFiles,
                 sync: {
-                    pendingCount,
+                    pendingCount: 0,
                     lastSavedAt: prev?.sync?.lastSavedAt || null,
-                    status: didSend
-                        ? "saving"
-                        : prev?.sync?.status || "offline",
+                    status: prev.ydoc ? "saved" : prev?.sync?.status || "offline",
                 },
             };
         });
@@ -712,7 +711,7 @@ export function FileViewer({
     };
 
     useEffect(() => {
-        if (!editorInstance || !environment?.ws || !shouldShowRawEditor) return;
+        if (!editorInstance || !shouldShowRawEditor) return;
 
         const editor = editorInstance;
 
@@ -720,34 +719,16 @@ export function FileViewer({
             const position = event.position;
             if (!editor.getModel() || !currentFileIdRef.current) return;
 
-            environment.ws.send(
-                JSON.stringify({
-                    type: "cursorUpdate",
-                    data: {
-                        userId: environment.userId,
-                        userName: environment.viewerName,
-                        fileId: currentFileIdRef.current,
-                        position,
-                    },
-                }),
-            );
+            environment?.yProvider?.awareness?.setLocalStateField("cursor", {
+                fileId: currentFileIdRef.current,
+                position,
+            });
         });
 
-        const contentDisposable = editor.onDidChangeModelContent((event) => {
+        const contentDisposable = editor.onDidChangeModelContent(() => {
             if (isApplyingRemoteChangeRef.current || currentFileReadOnlyRef.current) {
                 return;
             }
-
-            const changes = event.changes.map((change) => ({
-                range: {
-                    startLineNumber: change.range.startLineNumber,
-                    startColumn: change.range.startColumn,
-                    endLineNumber: change.range.endLineNumber,
-                    endColumn: change.range.endColumn,
-                },
-                text: change.text,
-                rangeLength: change.rangeLength,
-            }));
 
             const updatedContent = editor.getValue();
             const fileId = currentFileIdRef.current;
@@ -769,38 +750,17 @@ export function FileViewer({
                         : file,
                 );
 
-                const didSend = prev.ws?.readyState === 1;
-                if (didSend) {
-                    prev.ws.send(
-                        JSON.stringify({
-                            type: "fileUpdate",
-                            data: {
-                                fileId,
-                                changes,
-                                files: updatedFiles,
-                                userId: prev.userId,
-                            },
-                        }),
-                    );
+                if (prev.ydoc) {
+                    replaceFilesInDoc(prev.ydoc, updatedFiles);
                 }
-
-                const pendingCount = didSend
-                    ? (Number.isFinite(prev?.sync?.pendingCount)
-                          ? prev.sync.pendingCount
-                          : 0) + 1
-                    : Number.isFinite(prev?.sync?.pendingCount)
-                      ? prev.sync.pendingCount
-                      : 0;
 
                 return {
                     ...prev,
                     files: updatedFiles,
                     sync: {
-                        pendingCount,
+                        pendingCount: 0,
                         lastSavedAt: prev?.sync?.lastSavedAt || null,
-                        status: didSend
-                            ? "saving"
-                            : prev?.sync?.status || "offline",
+                        status: prev.ydoc ? "saved" : prev?.sync?.status || "offline",
                     },
                 };
             });
@@ -812,7 +772,7 @@ export function FileViewer({
         };
     }, [
         editorInstance,
-        environment?.ws,
+        environment?.yProvider,
         environment?.userId,
         environment?.viewerName,
         setEnvironment,
@@ -841,76 +801,6 @@ export function FileViewer({
         editor.setPosition({ lineNumber: targetLine, column: safeColumn });
         editor.focus();
     };
-
-    useEffect(() => {
-        if (!environment?.pendingFileUpdate) {
-            return;
-        }
-
-        const update = environment.pendingFileUpdate;
-
-        if (update.userId === environment.userId) {
-            setEnvironment((prev) => ({ ...prev, pendingFileUpdate: null }));
-            return;
-        }
-
-        if (!editorRef.current || !monacoRef.current || !shouldShowRawEditor) {
-            setEnvironment((prev) => ({
-                ...prev,
-                files: Array.isArray(update.files) ? update.files : prev.files,
-                pendingFileUpdate: null,
-            }));
-            return;
-        }
-
-        const editor = editorRef.current;
-        const monaco = monacoRef.current;
-
-        isApplyingRemoteChangeRef.current = true;
-
-        try {
-            const targetFile = update.files?.find(
-                (f) => f.id === environment.currentFile,
-            );
-
-            if (targetFile && targetFile.id === update.fileId) {
-                if (update.changes) {
-                    const edits = update.changes.map((change) => ({
-                        range: new monaco.Range(
-                            change.range.startLineNumber,
-                            change.range.startColumn,
-                            change.range.endLineNumber,
-                            change.range.endColumn,
-                        ),
-                        text: change.text,
-                        forceMoveMarkers: true,
-                    }));
-
-                    editor.executeEdits("remote", edits);
-
-                    if (editor.getValue() !== targetFile.content) {
-                        editor.setValue(targetFile.content);
-                    }
-                } else if (targetFile.content !== editor.getValue()) {
-                    editor.setValue(targetFile.content);
-                }
-            }
-
-            setEnvironment((prev) => ({
-                ...prev,
-                files: Array.isArray(update.files) ? update.files : prev.files,
-                pendingFileUpdate: null,
-            }));
-        } finally {
-            isApplyingRemoteChangeRef.current = false;
-        }
-    }, [
-        environment?.pendingFileUpdate,
-        environment?.currentFile,
-        environment?.userId,
-        setEnvironment,
-        shouldShowRawEditor,
-    ]);
 
     useEffect(() => {
         if (Array.isArray(environment?.remoteCursors)) {

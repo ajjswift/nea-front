@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useEnvironment } from "@/layout/EnvironmentLayout";
 import { useParams } from "next/navigation";
 import axios from "axios";
+import { useYjsEnvironmentCollaboration } from "@/lib/collaboration/yjsEnvironment";
 
 const PYTHON_ERROR_HINTS = {
     SyntaxError: {
@@ -66,34 +67,6 @@ const PYTHON_ERROR_HINTS = {
         suggestion: "Guard division with an if-check before calculating.",
     },
 };
-
-function mergePresenceUsers(currentUsers, incomingUser) {
-    const normalizedIncomingId = incomingUser?.id;
-    if (!normalizedIncomingId) {
-        return Array.isArray(currentUsers) ? currentUsers : [];
-    }
-
-    const current = Array.isArray(currentUsers) ? currentUsers : [];
-    const existingIndex = current.findIndex((entry) => entry.id === normalizedIncomingId);
-    if (existingIndex === -1) {
-        return [...current, incomingUser];
-    }
-
-    const updated = [...current];
-    updated[existingIndex] = {
-        ...updated[existingIndex],
-        ...incomingUser,
-    };
-    return updated;
-}
-
-function normalizePresenceList(value) {
-    if (!Array.isArray(value)) {
-        return [];
-    }
-
-    return value.filter((entry) => Boolean(entry?.id));
-}
 
 function parseLastPythonError(consoleText = "") {
     const normalized = `${consoleText || ""}`;
@@ -220,6 +193,16 @@ export function EnvironmentManager() {
     const manualDisconnectRef = useRef(false);
     const viewerNameRef = useRef("");
     const [wsUri, setWsUri] = useState(null);
+    const collaborationToken = environment?.collaboration?.token || null;
+
+    useYjsEnvironmentCollaboration({
+        environmentId,
+        wsUri,
+        token: collaborationToken,
+        userId: environment?.userId,
+        userName: environment?.viewerName,
+        setEnvironment,
+    });
 
     useEffect(() => {
         viewerNameRef.current =
@@ -273,11 +256,6 @@ export function EnvironmentManager() {
             setEnvironment((prev) => ({
                 ...prev,
                 ws,
-                sync: {
-                    pendingCount: prev?.sync?.pendingCount || 0,
-                    lastSavedAt: prev?.sync?.lastSavedAt || null,
-                    status: "saved",
-                },
             }));
         };
 
@@ -299,9 +277,6 @@ export function EnvironmentManager() {
                     setEnvironment((prev) => ({
                         ...prev,
                         id: environmentId,
-                        files: Array.isArray(parsedData?.data?.files)
-                            ? [...parsedData.data.files]
-                            : [],
                         clientId,
                         userId: parsedData?.data?.userId || clientId,
                         viewerName:
@@ -309,16 +284,7 @@ export function EnvironmentManager() {
                             parsedData?.data?.userName ||
                             viewerNameRef.current ||
                             "User",
-                        onlineUsers: Array.isArray(parsedData?.data?.onlineUsers)
-                            ? parsedData.data.onlineUsers
-                            : prev.onlineUsers || [],
-                        remoteCursors: [],
                         display: createEmptyDisplayState(),
-                        sync: {
-                            pendingCount: 0,
-                            lastSavedAt: prev?.sync?.lastSavedAt || null,
-                            status: "saved",
-                        },
                     }));
                     break;
 
@@ -469,58 +435,6 @@ export function EnvironmentManager() {
                     }));
                     break;
 
-                case "fileUpdate": {
-                    const fileUpdate = parsedData.data;
-                    if (!Array.isArray(fileUpdate?.files)) {
-                        break;
-                    }
-
-                    setEnvironment((prev) => {
-                        const pendingCount = Number.isFinite(prev?.sync?.pendingCount)
-                            ? prev.sync.pendingCount
-                            : 0;
-
-                        return {
-                            ...prev,
-                            files: fileUpdate.files,
-                            pendingFileUpdate: fileUpdate,
-                            sync: {
-                                pendingCount,
-                                lastSavedAt: prev?.sync?.lastSavedAt || null,
-                                status: pendingCount > 0 ? "saving" : "saved",
-                            },
-                        };
-                    });
-                    break;
-                }
-
-                case "fileUpdateAck": {
-                    setEnvironment((prev) => {
-                        const pendingCount = Math.max(
-                            0,
-                            (Number.isFinite(prev?.sync?.pendingCount)
-                                ? prev.sync.pendingCount
-                                : 0) - 1,
-                        );
-                        const updatedAt =
-                            Number.isFinite(parsedData?.data?.updatedAt)
-                                ? parsedData.data.updatedAt
-                                : Date.now();
-
-                        return {
-                            ...prev,
-                            sync: {
-                                pendingCount,
-                                lastSavedAt: pendingCount === 0
-                                    ? updatedAt
-                                    : prev?.sync?.lastSavedAt || null,
-                                status: pendingCount > 0 ? "saving" : "saved",
-                            },
-                        };
-                    });
-                    break;
-                }
-
                 case "runProcessingStarted":
                     setEnvironment((prev) => {
                         if (parsedData.data.time <= (prev.lastStopped || 0)) {
@@ -547,98 +461,6 @@ export function EnvironmentManager() {
                     });
                     break;
 
-                case "cursorRemove": {
-                    const cursorId = parsedData.data.id;
-                    setEnvironment((prev) => ({
-                        ...prev,
-                        remoteCursors: (prev.remoteCursors || []).filter(
-                            (cursor) => cursor.id !== cursorId,
-                        ),
-                    }));
-                    break;
-                }
-
-                case "cursorUpdate": {
-                    const rawCursor = parsedData.data;
-                    const incomingId = rawCursor.userId || rawCursor.id;
-
-                    if (!incomingId) {
-                        break;
-                    }
-
-                    setEnvironment((prev) => {
-                        const newCursor = {
-                            ...rawCursor,
-                            id: incomingId,
-                        };
-
-                        const currentCursors = Array.isArray(prev.remoteCursors)
-                            ? prev.remoteCursors
-                            : [];
-
-                        const index = currentCursors.findIndex(
-                            (c) => c.id === newCursor.id,
-                        );
-
-                        let updatedCursors;
-                        if (index !== -1) {
-                            updatedCursors = [...currentCursors];
-                            updatedCursors[index] = newCursor;
-                        } else {
-                            updatedCursors = [...currentCursors, newCursor];
-                        }
-
-                        return {
-                            ...prev,
-                            remoteCursors: updatedCursors,
-                        };
-                    });
-                    break;
-                }
-
-                case "presenceUpdate":
-                    setEnvironment((prev) => ({
-                        ...prev,
-                        onlineUsers: mergePresenceUsers(
-                            prev.onlineUsers,
-                            parsedData.data,
-                        ),
-                    }));
-                    break;
-
-                case "presenceRemove":
-                    setEnvironment((prev) => ({
-                        ...prev,
-                        onlineUsers: Array.isArray(prev.onlineUsers)
-                            ? prev.onlineUsers.filter(
-                                  (entry) => entry.id !== parsedData?.data?.id,
-                              )
-                            : [],
-                    }));
-                    break;
-
-                case "presenceSnapshot":
-                    setEnvironment((prev) => {
-                        const onlineUsers = normalizePresenceList(
-                            parsedData?.data?.onlineUsers,
-                        );
-                        const activeIds = new Set(
-                            onlineUsers.map((entry) => entry.id),
-                        );
-                        const remoteCursors = Array.isArray(prev.remoteCursors)
-                            ? prev.remoteCursors.filter(
-                                  (cursor) => activeIds.has(cursor?.id),
-                              )
-                            : [];
-
-                        return {
-                            ...prev,
-                            onlineUsers,
-                            remoteCursors,
-                        };
-                    });
-                    break;
-
                 case "pong":
                     break;
 
@@ -660,23 +482,12 @@ export function EnvironmentManager() {
             }
 
             setEnvironment((prev) => {
-                const selfId = prev?.userId;
-                const onlineUsers = Array.isArray(prev?.onlineUsers)
-                    ? prev.onlineUsers.filter((entry) => entry?.id === selfId)
-                    : [];
                 return {
                     ...prev,
                     ws: null,
-                    onlineUsers,
-                    remoteCursors: [],
                     display: createEmptyDisplayState({
                         status: "offline",
                     }),
-                    sync: {
-                        pendingCount: 0,
-                        lastSavedAt: prev?.sync?.lastSavedAt || null,
-                        status: "offline",
-                    },
                 };
             });
             wsRef.current = null;
@@ -708,25 +519,6 @@ export function EnvironmentManager() {
             wsRef.current = null;
         };
     }, [environmentId, wsUri, connectWebSocket]);
-
-    useEffect(() => {
-        if (!environment?.ws || environment.ws.readyState !== 1) {
-            return;
-        }
-
-        if (!environment?.viewerName) {
-            return;
-        }
-
-        environment.ws.send(
-            JSON.stringify({
-                type: "presenceUpdate",
-                data: {
-                    userName: environment.viewerName,
-                },
-            }),
-        );
-    }, [environment?.viewerName, environment?.ws]);
 
     useEffect(() => {
         if (!environment?.ws || environment.ws.readyState !== 1) {

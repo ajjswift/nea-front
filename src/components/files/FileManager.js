@@ -28,6 +28,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { faPenToSquare } from "@fortawesome/free-regular-svg-icons";
+import { replaceFilesInDoc } from "@/lib/collaboration/yjsEnvironment";
 
 function isInstructionsFile(fileName) {
     return (fileName || "").toLowerCase() === "instructions.md";
@@ -218,18 +219,8 @@ export function FileManager() {
                 },
             ];
 
-            if (prev.ws?.readyState === 1) {
-                prev.ws.send(
-                    JSON.stringify({
-                        type: "fileUpdate",
-                        data: {
-                            fileId: newId,
-                            changes: [],
-                            files: updatedFiles,
-                            userId: prev.userId,
-                        },
-                    }),
-                );
+            if (prev.ydoc) {
+                replaceFilesInDoc(prev.ydoc, updatedFiles);
             }
 
             return {
@@ -262,18 +253,8 @@ export function FileManager() {
 
             const updatedFiles = previousFiles.filter((f) => f.id !== fileId);
 
-            if (prev.ws?.readyState === 1) {
-                prev.ws.send(
-                    JSON.stringify({
-                        type: "fileUpdate",
-                        data: {
-                            fileId,
-                            changes: [],
-                            files: updatedFiles,
-                            userId: prev.userId,
-                        },
-                    }),
-                );
+            if (prev.ydoc) {
+                replaceFilesInDoc(prev.ydoc, updatedFiles);
             }
 
             const nextCurrentFile =
@@ -317,18 +298,8 @@ export function FileManager() {
                 f.id === fileId ? { ...f, name: normalizedNewName } : f,
             );
 
-            if (prev.ws?.readyState === 1) {
-                prev.ws.send(
-                    JSON.stringify({
-                        type: "fileUpdate",
-                        data: {
-                            fileId,
-                            changes: [],
-                            files: updatedFiles,
-                            userId: prev.userId,
-                        },
-                    }),
-                );
+            if (prev.ydoc) {
+                replaceFilesInDoc(prev.ydoc, updatedFiles);
             }
 
             return {
@@ -374,40 +345,18 @@ export function FileManager() {
         setEnvironment((prev) => {
             const previousFiles = Array.isArray(prev.files) ? prev.files : [];
             const updatedFiles = [...previousFiles, ...importedFiles];
-            const didSend = prev.ws?.readyState === 1;
-
-            if (didSend) {
-                prev.ws.send(
-                    JSON.stringify({
-                        type: "fileUpdate",
-                        data: {
-                            fileId: importedFiles[importedFiles.length - 1].id,
-                            changes: [],
-                            files: updatedFiles,
-                            userId: prev.userId,
-                        },
-                    }),
-                );
+            if (prev.ydoc) {
+                replaceFilesInDoc(prev.ydoc, updatedFiles);
             }
-
-            const pendingCount = didSend
-                ? (Number.isFinite(prev?.sync?.pendingCount)
-                      ? prev.sync.pendingCount
-                      : 0) + 1
-                : Number.isFinite(prev?.sync?.pendingCount)
-                  ? prev.sync.pendingCount
-                  : 0;
 
             return {
                 ...prev,
                 files: updatedFiles,
                 currentFile: importedFiles[importedFiles.length - 1].id,
                 sync: {
-                    pendingCount,
+                    pendingCount: 0,
                     lastSavedAt: prev?.sync?.lastSavedAt || null,
-                    status: didSend
-                        ? "saving"
-                        : prev?.sync?.status || "offline",
+                    status: prev.ydoc ? "saved" : prev?.sync?.status || "offline",
                 },
             };
         });

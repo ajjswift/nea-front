@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { randomUUID } from "crypto";
+import { createHmac, randomUUID } from "crypto";
 import db from "@/utils/pg";
 import { SessionService } from "@/lib/auth/SessionService";
 import { EnvironmentRepository } from "@/lib/environments/EnvironmentRepository";
@@ -22,6 +22,10 @@ const classroomService = new ClassroomService({
 
 const ANON_NAME_COOKIE = "anon_viewer_name";
 const ANON_ID_COOKIE = "anon_viewer_id";
+const YJS_ROOM_TOKEN_TTL_MS = 8 * 60 * 60 * 1000;
+const YJS_ROOM_TOKEN_SECRET =
+    process.env.YJS_ROOM_TOKEN_SECRET ||
+    (process.env.NODE_ENV === "production" ? "" : "dev-yjs-room-token-secret");
 const ANON_ADJECTIVES = [
     "Curious",
     "Calm",
@@ -73,6 +77,48 @@ function generateAnonymousName() {
     const noun = ANON_NOUNS[Math.floor(Math.random() * ANON_NOUNS.length)];
     const number = Math.floor(100 + Math.random() * 900);
     return `${adjective} ${noun} ${number}`;
+}
+
+function buildEnvironmentRoomId(environmentId) {
+    return `environment:${environmentId}`;
+}
+
+function createCollaborationToken({ environmentId, userId, userName }) {
+    if (!YJS_ROOM_TOKEN_SECRET) {
+        throw new Error("YJS_ROOM_TOKEN_SECRET is required.");
+    }
+
+    const roomId = buildEnvironmentRoomId(environmentId);
+    const payload = {
+        roomId,
+        environmentId,
+        userId,
+        userName,
+        expiresAt: Date.now() + YJS_ROOM_TOKEN_TTL_MS,
+    };
+    const encodedPayload = Buffer.from(JSON.stringify(payload)).toString(
+        "base64url",
+    );
+    const signature = createHmac("sha256", YJS_ROOM_TOKEN_SECRET)
+        .update(encodedPayload)
+        .digest("base64url");
+
+    return {
+        roomId,
+        token: `${encodedPayload}.${signature}`,
+        expiresAt: payload.expiresAt,
+    };
+}
+
+function attachCollaboration(payload, environmentId, viewer) {
+    return {
+        ...payload,
+        collaboration: createCollaborationToken({
+            environmentId,
+            userId: viewer?.id || "",
+            userName: viewer?.username || "User",
+        }),
+    };
 }
 
 function getAnonymousViewerFromRequest(request) {
@@ -251,14 +297,15 @@ export async function GET(request, { params }) {
                 assignmentContext?.latest_test_run_json,
             );
 
-            const payload = {
+            const viewer = {
+                id: user.userId,
+                username: user.username,
+                role: user.role || "student",
+                anonymous: false,
+            };
+            const payload = attachCollaboration({
                 environment: environment.toJSON(),
-                viewer: {
-                    id: user.userId,
-                    username: user.username,
-                    role: user.role || "student",
-                    anonymous: false,
-                },
+                viewer,
                 access: {
                     viewerUserId: user.userId,
                     viewerRole: user.role || "student",
@@ -297,7 +344,7 @@ export async function GET(request, { params }) {
                     environmentReadOnly: Boolean(isSubmittedStudentEnvironment),
                     canResetToTemplate,
                 },
-            };
+            }, environmentId, viewer);
 
             await frontendCacheService.setJson(cacheKey, payload, 20);
             return NextResponse.json(payload, { status: 200 });
@@ -311,7 +358,7 @@ export async function GET(request, { params }) {
             );
         }
 
-        const payload = {
+        const payload = attachCollaboration({
             environment: environment.toJSON(),
             viewer: anonymousViewer.viewer,
             access: {
@@ -346,7 +393,7 @@ export async function GET(request, { params }) {
                 environmentReadOnly: false,
                 canResetToTemplate: false,
             },
-        };
+        }, environmentId, anonymousViewer.viewer);
 
         const response = NextResponse.json(payload, { status: 200 });
         if (anonymousViewer.shouldPersist) {
